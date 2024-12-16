@@ -1,0 +1,12 @@
+apiVersion: scaling.tryu.com/v1
+kind: MyComputeClass
+metadata:
+  name: instance-priority
+spec:
+  priorities:
+    - instanceType: "e2-medium"
+      priority: 1
+    - instanceType: "n2-standard-4"
+      priority: 2
+    - instanceType: "e2-highmem-8"
+      priority: 3
