@@ -1,0 +1,9 @@
+apiVersion: scaling.tryu.com/v1
+kind: MyComputeClass
+metadata:
+  labels:
+    app.kubernetes.io/name: my-computeclass
+    app.kubernetes.io/managed-by: kustomize
+  name: mycomputeclass-sample
+spec:
+  # TODO(user): Add fields here

@@ -1,0 +1,23 @@
+# permissions for end users to view mycomputeclasses.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: my-computeclass
+    app.kubernetes.io/managed-by: kustomize
+  name: mycomputeclass-viewer-role
+rules:
+- apiGroups:
+  - scaling.tryu.com
+  resources:
+  - mycomputeclasses
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - scaling.tryu.com
+  resources:
+  - mycomputeclasses/status
+  verbs:
+  - get

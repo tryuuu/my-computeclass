@@ -1,0 +1,27 @@
+# permissions for end users to edit mycomputeclasses.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: my-computeclass
+    app.kubernetes.io/managed-by: kustomize
+  name: mycomputeclass-editor-role
+rules:
+- apiGroups:
+  - scaling.tryu.com
+  resources:
+  - mycomputeclasses
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - scaling.tryu.com
+  resources:
+  - mycomputeclasses/status
+  verbs:
+  - get
