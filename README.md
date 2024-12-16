@@ -1,8 +1,10 @@
 # my-computeclass
-// TODO(user): Add simple overview of use/purpose
+Here is the explanation for [ComputeClass](https://cloud.google.com/kubernetes-engine/docs/concepts/about-custom-compute-classes):
+
+> Compute classes can target specific optimizations, like provisioning high-performance nodes or prioritizing cost-optimized configurations for cheaper running costs. Custom compute classes let you define profiles that GKE then uses to provision nodes that closely meet the requirements of specific workloads.
 
 ## Description
-// TODO(user): An in-depth paragraph about your project and overview of use
+This repositoty tries to make clone for Compute Class by using Kubebuilder for building an operator.
 
 ## Getting Started
 
