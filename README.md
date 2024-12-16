@@ -4,7 +4,7 @@ Here is the explanation for [ComputeClass](https://cloud.google.com/kubernetes-e
 > Compute classes can target specific optimizations, like provisioning high-performance nodes or prioritizing cost-optimized configurations for cheaper running costs. Custom compute classes let you define profiles that GKE then uses to provision nodes that closely meet the requirements of specific workloads.
 
 ## Description
-This repositoty tries to make clone for Compute Class by using Kubebuilder for building an operator.
+This repositoty tries to make clone for Compute Class by using Kubebuilder to build an operator.
 
 ## Getting Started
 
