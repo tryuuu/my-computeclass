@@ -5,6 +5,14 @@ Here is the explanation for [ComputeClass](https://cloud.google.com/kubernetes-e
 
 ## Description
 This repositoty tries to make clone for Compute Class by using Kubebuilder to build an operator.
+use buildx for docker build:
+```
+make docker-buildx
+```
+deploy:
+```
+make deploy
+```
 
 ## Getting Started
 
