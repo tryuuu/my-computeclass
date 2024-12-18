@@ -20,6 +20,7 @@ import (
 	"context"
 
 	container "cloud.google.com/go/container/apiv1"
+	containerpb "google.golang.org/genproto/googleapis/container/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -57,6 +58,31 @@ func (r *MyComputeClassReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{}, err
 	}
 	logger.Info("GKE client created")
+
+	// Fetch the MyComputeClass instance
+	instance := &scalingv1.MyComputeClass{}
+	if err := r.Get(ctx, req.NamespacedName, instance); err != nil {
+		logger.Error(err, "Failed to get MyComputeClass")
+		return ctrl.Result{}, err
+	}
+
+	projectID := "ryu-project-441804"
+	location := "asia-northeast1"
+	clusterName := "sreake-intern-tryu-gke"
+
+	// https://cloud.google.com/python/docs/reference/container/latest/google.cloud.container_v1.types.ListNodePoolsRequest
+	NodePools := &containerpb.ListNodePoolsRequest{
+		ProjectId: projectID,
+		Zone:      location,
+		ClusterId: clusterName,
+	}
+	if err != nil {
+		logger.Error(err, "Failed to list NodePools")
+		return ctrl.Result{}, err
+	}
+	// NodePoolsを出力
+	logger.Info("NodePools", "NodePools", NodePools)
+
 	return ctrl.Result{}, nil
 }
 
