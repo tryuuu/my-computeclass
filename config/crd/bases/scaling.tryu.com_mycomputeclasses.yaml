@@ -39,24 +39,10 @@ spec:
           spec:
             description: MyComputeClassSpec defines the desired state of MyComputeClass.
             properties:
-              priorities:
-                description: A list of instance types and their priorities.
-                type: array
-                items:
-                  type: object
-                  properties:
-                    instanceType:
-                      description: The instance type for the Node which users want to use.
-                      type: string
-                    priority:
-                      description: The priority of the instance type.
-                      type: integer
-                    spot:
-                      description: The spot instance flag.
-                      type: boolean
-                    required:
-                    - instanceType
-                    - priority
+              foo:
+                description: Foo is an example field of MyComputeClass. Edit mycomputeclass_types.go
+                  to remove/update
+                type: string
             type: object
           status:
             description: MyComputeClassStatus defines the observed state of MyComputeClass.

@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 
+	container "cloud.google.com/go/container/apiv1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -47,10 +48,15 @@ type MyComputeClassReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.19.1/pkg/reconcile
 func (r *MyComputeClassReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = log.FromContext(ctx)
+	logger := log.FromContext(ctx)
 
-	// TODO(user): your logic here
-
+	// Initialize GKE client
+	_, err := container.NewClusterManagerClient(ctx)
+	if err != nil {
+		logger.Error(err, "Failed to create GKE client")
+		return ctrl.Result{}, err
+	}
+	logger.Info("GKE client created")
 	return ctrl.Result{}, nil
 }
 
