@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 
 	container "cloud.google.com/go/container/apiv1"
 	containerpb "google.golang.org/genproto/googleapis/container/v1"
@@ -52,7 +53,7 @@ func (r *MyComputeClassReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	logger := log.FromContext(ctx)
 
 	// Initialize GKE client
-	_, err := container.NewClusterManagerClient(ctx)
+	gkeClient, err := container.NewClusterManagerClient(ctx)
 	if err != nil {
 		logger.Error(err, "Failed to create GKE client")
 		return ctrl.Result{}, err
@@ -71,17 +72,23 @@ func (r *MyComputeClassReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	clusterName := "sreake-intern-tryu-gke"
 
 	// https://cloud.google.com/python/docs/reference/container/latest/google.cloud.container_v1.types.ListNodePoolsRequest
-	NodePools := &containerpb.ListNodePoolsRequest{
-		ProjectId: projectID,
-		Zone:      location,
-		ClusterId: clusterName,
+	reqNodePools := &containerpb.ListNodePoolsRequest{
+		Parent: fmt.Sprintf("projects/%s/locations/%s/clusters/%s", projectID, location, clusterName),
 	}
 	if err != nil {
 		logger.Error(err, "Failed to list NodePools")
 		return ctrl.Result{}, err
 	}
-	// NodePoolsを出力
-	logger.Info("NodePools", "NodePools", NodePools)
+	// list NodePools
+	resp, err := gkeClient.ListNodePools(ctx, reqNodePools)
+	if err != nil {
+		logger.Error(err, "Failed to list NodePools")
+		return ctrl.Result{}, err
+	}
+	// Log NodePools information
+	for _, nodePool := range resp.NodePools {
+		logger.Info("NodePool", "name", nodePool.Name, "status", nodePool.Status)
+	}
 
 	return ctrl.Result{}, nil
 }
