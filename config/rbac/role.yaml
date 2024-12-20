@@ -5,6 +5,15 @@ metadata:
   name: manager-role
 rules:
 - apiGroups:
+  - ""
+  resources:
+  - nodes
+  verbs:
+  - get
+  - list
+  - update
+  - watch
+- apiGroups:
   - scaling.tryu.com
   resources:
   - mycomputeclasses
@@ -22,14 +31,6 @@ rules:
   - mycomputeclasses/finalizers
   verbs:
   - update
-- apiGroups:
-  - ""
-  resources:
-  - nodes
-  verbs:
-  - get
-  - list
-  - watch
 - apiGroups:
   - scaling.tryu.com
   resources:

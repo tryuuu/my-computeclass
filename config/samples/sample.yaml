@@ -8,5 +8,5 @@ spec:
       priority: 1
     - instanceType: "n2d-standard-2"
       priority: 2
-    - instanceType: ""
+    - instanceType: "e2-standard-2"
       priority: 3
