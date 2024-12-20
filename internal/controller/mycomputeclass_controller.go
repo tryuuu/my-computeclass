@@ -53,11 +53,13 @@ func (r *MyComputeClassReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	logger := log.FromContext(ctx)
 
 	// Initialize GKE client
+	// https://cloud.google.com/go/docs/reference/cloud.google.com/go/container/latest/apiv1
 	gkeClient, err := container.NewClusterManagerClient(ctx)
 	if err != nil {
 		logger.Error(err, "Failed to create GKE client")
 		return ctrl.Result{}, err
 	}
+	defer gkeClient.Close()
 	logger.Info("GKE client created")
 
 	// Fetch the MyComputeClass instance
@@ -80,14 +82,19 @@ func (r *MyComputeClassReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{}, err
 	}
 	// list NodePools
+	// https://pkg.go.dev/google.golang.org/cloud/container/apiv1#ClusterManagerClient.ListNodePools
 	resp, err := gkeClient.ListNodePools(ctx, reqNodePools)
 	if err != nil {
 		logger.Error(err, "Failed to list NodePools")
 		return ctrl.Result{}, err
 	}
-	// Log NodePools information
+	// Log NodePools info
 	for _, nodePool := range resp.NodePools {
-		logger.Info("NodePool", "name", nodePool.Name, "status", nodePool.Status)
+		machineType := ""
+		if nodePool.Config != nil {
+			machineType = nodePool.Config.MachineType
+		}
+		logger.Info("NodePool", "name", nodePool.Name, "status", nodePool.Status, "machineType", machineType)
 	}
 
 	return ctrl.Result{}, nil
