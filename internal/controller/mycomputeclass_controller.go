@@ -19,9 +19,11 @@ package controller
 import (
 	"context"
 	"fmt"
+	"sort"
 
 	container "cloud.google.com/go/container/apiv1"
 	containerpb "google.golang.org/genproto/googleapis/container/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -69,6 +71,15 @@ func (r *MyComputeClassReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		logger.Error(err, "Failed to get MyComputeClass")
 		return ctrl.Result{}, err
 	}
+	priorityList := instance.Spec.Properties
+	if len(priorityList) == 0 {
+		logger.Info("No priority list defined, skipping reconciliation")
+		return ctrl.Result{}, nil
+	}
+	// sort by priority
+	sort.Slice(priorityList, func(i, j int) bool {
+		return priorityList[i].Priority < priorityList[j].Priority
+	})
 
 	projectID := "ryu-project-441804"
 	location := "asia-northeast1"
@@ -96,9 +107,67 @@ func (r *MyComputeClassReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			machineType = nodePool.Config.MachineType
 		}
 		logger.Info("NodePool", "name", nodePool.Name, "status", nodePool.Status, "machineType", machineType)
+
+		found := false
+		for _, prop := range priorityList {
+			// check if the machine type is in the priority list
+			if prop.InstanceType == machineType {
+				found = true
+				break
+			}
+		}
+		if !found {
+			continue
+		}
+		// apply taint
+		if err := r.applyTaintToNodePool(ctx, machineType); err != nil {
+			logger.Error(err, "Failed to apply taint")
+			return ctrl.Result{}, err
+		}
 	}
 
 	return ctrl.Result{}, nil
+}
+func (r *MyComputeClassReconciler) applyTaintToNodePool(ctx context.Context, machineType string) error {
+	logger := log.FromContext(ctx)
+	nodeList := &corev1.NodeList{}
+	// use label selector to filter nodes
+	if err := r.List(ctx, nodeList, client.MatchingLabels{"beta.kubernetes.io/instance-type": machineType}); err != nil {
+		logger.Error(err, "Failed to list nodes for instance type", "instanceType", machineType)
+		return err
+	}
+	for _, node := range nodeList.Items {
+		logger.Info("Applying taint to node", "nodeName", node.Name, "machineType", machineType)
+
+		// Check if the taint already exists
+		taintExists := false
+		for _, taint := range node.Spec.Taints {
+			if taint.Key == "my-compute-class" && taint.Value == machineType {
+				taintExists = true
+				break
+			}
+		}
+		if taintExists {
+			logger.Info("Taint already exists", "nodeName", node.Name, "machineType", machineType)
+			continue
+		}
+
+		// Add taint
+		newTaint := corev1.Taint{
+			Key:    "my-compute-class",
+			Value:  machineType,
+			Effect: corev1.TaintEffectNoSchedule,
+		}
+		node.Spec.Taints = append(node.Spec.Taints, newTaint)
+
+		// Update node
+		if err := r.Update(ctx, &node); err != nil {
+			logger.Error(err, "Failed to apply taint to node", "nodeName", node.Name)
+			return err
+		}
+		logger.Info("Taint applied to node", "nodeName", node.Name)
+	}
+	return nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
