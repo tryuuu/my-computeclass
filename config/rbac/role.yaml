@@ -23,6 +23,14 @@ rules:
   verbs:
   - update
 - apiGroups:
+  - ""
+  resources:
+  - nodes
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
   - scaling.tryu.com
   resources:
   - mycomputeclasses/status
