@@ -37,6 +37,7 @@ import (
 
 	scalingv1 "tryu.com/my-computeclass/api/v1"
 	"tryu.com/my-computeclass/internal/controller"
+	webhookscalingv1 "tryu.com/my-computeclass/internal/webhook/v1"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -148,6 +149,13 @@ func main() {
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "MyComputeClass")
 		os.Exit(1)
+	}
+	// nolint:goconst
+	if os.Getenv("ENABLE_WEBHOOKS") != "false" {
+		if err = webhookscalingv1.SetupMyComputeClassWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "MyComputeClass")
+			os.Exit(1)
+		}
 	}
 	// +kubebuilder:scaffold:builder
 
