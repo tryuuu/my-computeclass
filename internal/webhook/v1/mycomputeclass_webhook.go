@@ -19,7 +19,9 @@ package v1
 import (
 	"context"
 	"fmt"
+	"sort"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -65,7 +67,42 @@ func (d *MyComputeClassCustomDefaulter) Default(ctx context.Context, obj runtime
 	}
 	mycomputeclasslog.Info("Defaulting for MyComputeClass", "name", mycomputeclass.GetName())
 
-	// TODO(user): fill in your defaulting logic.
+	priorityList := mycomputeclass.Spec.Properties
+	if len(priorityList) == 0 {
+		mycomputeclasslog.Info("No priority list defined, skipping defaulting")
+		return nil
+	}
+	// sort by priority
+	sort.Slice(priorityList, func(i, j int) bool {
+		return priorityList[i].Priority < priorityList[j].Priority
+	})
+
+	topPriorityInstanceType := priorityList[0].InstanceType
+	mycomputeclasslog.Info("Top priority instance type", "instanceType", topPriorityInstanceType)
+
+	if pod, ok := obj.(*corev1.Pod); ok {
+		mycomputeclasslog.Info("Applying toleration to Pod", "podName", pod.GetName())
+
+		// Check if the toleration already exists
+		tolerationExists := false
+		for _, toleration := range pod.Spec.Tolerations {
+			if toleration.Key == "my-compute-class" && toleration.Value == topPriorityInstanceType {
+				tolerationExists = true
+				break
+			}
+		}
+		// Add the toleration if it does not exist
+		// the value of the toleration is the top priority instance type
+		if !tolerationExists {
+			pod.Spec.Tolerations = append(pod.Spec.Tolerations, corev1.Toleration{
+				Key:      "my-compute-class",
+				Operator: corev1.TolerationOpEqual,
+				Value:    topPriorityInstanceType,
+				Effect:   corev1.TaintEffectNoSchedule,
+			})
+			mycomputeclasslog.Info("Toleration added", "podName", pod.GetName(), "instanceType", topPriorityInstanceType)
+		}
+	}
 
 	return nil
 }
