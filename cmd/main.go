@@ -152,6 +152,9 @@ func main() {
 	}
 	// nolint:goconst
 	if os.Getenv("ENABLE_WEBHOOKS") != "false" {
+		webhookServer.Register("/mutate-core-v1-pod", &webhook.Admission{
+			Handler: &MyComputeClassCustomDefaulter{},
+		})
 		if err = webhookscalingv1.SetupMyComputeClassWebhookWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create webhook", "webhook", "MyComputeClass")
 			os.Exit(1)

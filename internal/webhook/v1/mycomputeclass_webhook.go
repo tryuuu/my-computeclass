@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/docker/docker/client"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -53,21 +54,31 @@ func SetupMyComputeClassWebhookWithManager(mgr ctrl.Manager) error {
 // NOTE: The +kubebuilder:object:generate=false marker prevents controller-gen from generating DeepCopy methods,
 // as it is used only for temporary operations and does not need to be deeply copied.
 type MyComputeClassCustomDefaulter struct {
-	// TODO(user): Add more fields as needed for defaulting
+	Client client.Client
 }
 
 var _ webhook.CustomDefaulter = &MyComputeClassCustomDefaulter{}
 
 // Default implements webhook.CustomDefaulter so a webhook will be registered for the Kind MyComputeClass.
 func (d *MyComputeClassCustomDefaulter) Default(ctx context.Context, obj runtime.Object) error {
-	mycomputeclass, ok := obj.(*scalingv1.MyComputeClass)
+	pod, ok := obj.(*corev1.Pod)
 
 	if !ok {
-		return fmt.Errorf("expected an MyComputeClass object but got %T", obj)
+		return fmt.Errorf("expected a Pod object but got %T", obj)
 	}
-	mycomputeclasslog.Info("Defaulting for MyComputeClass", "name", mycomputeclass.GetName())
+	mycomputeclasslog.Info("Applying default toleration to Pod", "podName", pod.GetName())
 
-	priorityList := mycomputeclass.Spec.Properties
+	var myComputeClassList scalingv1.MyComputeClassList
+	if err := d.Client.List(ctx, &myComputeClassList); err != nil {
+		mycomputeclasslog.Error(err, "Failed to list MyComputeClass resources")
+		return fmt.Errorf("failed to list MyComputeClass resources: %w", err)
+	}
+
+	var priorityList []scalingv1.MyComputeClassProperty
+	for _, myComputeClass := range myComputeClassList.Items {
+		priorityList = append(priorityList, myComputeClass.Spec.Properties...)
+	}
+
 	if len(priorityList) == 0 {
 		mycomputeclasslog.Info("No priority list defined, skipping defaulting")
 		return nil
