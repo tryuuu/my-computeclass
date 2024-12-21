@@ -1,5 +1,10 @@
-resources:
-- certificate.yaml
+namespace: my-computeclass-system
 
-configurations:
-- kustomizeconfig.yaml
+resources:
+  - certificate.yaml
+
+configMapGenerator:
+  - name: my-computeclass-config
+    literals:
+      - SERVICE_NAME=my-computeclass-webhook-service
+      - SERVICE_NAMESPACE=my-computeclass-system
