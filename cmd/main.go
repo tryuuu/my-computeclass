@@ -34,6 +34,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
+	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	scalingv1 "tryu.com/my-computeclass/api/v1"
 	"tryu.com/my-computeclass/internal/controller"
@@ -152,14 +153,24 @@ func main() {
 	}
 	// nolint:goconst
 	if os.Getenv("ENABLE_WEBHOOKS") != "false" {
-		webhookServer.Register("/mutate-core-v1-pod", &webhook.Admission{
-			Handler: &MyComputeClassCustomDefaulter{},
+		// Register the mutating webhook
+		webhookServer.Register("/mutate-core-v1-pod", &admission.Webhook{
+			// call Handle method of CustomDefaulterWrapper
+			Handler: &webhookscalingv1.CustomDefaulterWrapper{
+				// Default method execute the main logic
+				Defaulter: &webhookscalingv1.MyComputeClassCustomDefaulter{
+					Client: mgr.GetClient(),
+				},
+			},
 		})
+
+		// Register the MyComputeClass webhook with the manager
 		if err = webhookscalingv1.SetupMyComputeClassWebhookWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create webhook", "webhook", "MyComputeClass")
 			os.Exit(1)
 		}
 	}
+
 	// +kubebuilder:scaffold:builder
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {

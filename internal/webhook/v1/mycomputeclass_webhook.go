@@ -1,30 +1,15 @@
-/*
-Copyright 2024.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
-
 package v1
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sort"
 
-	"github.com/docker/docker/client"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
@@ -32,7 +17,6 @@ import (
 	scalingv1 "tryu.com/my-computeclass/api/v1"
 )
 
-// nolint:unused
 // log is for logging in this package.
 var mycomputeclasslog = logf.Log.WithName("mycomputeclass-resource")
 
@@ -44,28 +28,47 @@ func SetupMyComputeClassWebhookWithManager(mgr ctrl.Manager) error {
 		Complete()
 }
 
-// TODO(user): EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
+// CustomDefaulterWrapper wraps admission.CustomDefaulter to provide admission.Handler interface.
+type CustomDefaulterWrapper struct {
+	Defaulter admission.CustomDefaulter
+}
 
-// +kubebuilder:webhook:path=/mutate-core-v1-pod,mutating=true,failurePolicy=fail,sideEffects=None,groups="",resources=pods,verbs=create,versions=v1,name=mpod.kb.io,admissionReviewVersions=v1
+// Handle implements admission.Handler interface by invoking CustomDefaulter's Default method.
+func (w *CustomDefaulterWrapper) Handle(ctx context.Context, req admission.Request) admission.Response {
+	if req.Kind.Kind != "Pod" {
+		return admission.Errored(400, fmt.Errorf("expected Pod but got %s", req.Kind.Kind))
+	}
+	obj := &corev1.Pod{}
+	if err := json.Unmarshal(req.Object.Raw, obj); err != nil {
+		return admission.Errored(400, fmt.Errorf("failed to unmarshal object: %w", err))
+	}
 
-// MyComputeClassCustomDefaulter struct is responsible for setting default values on the custom resource of the
-// Kind MyComputeClass when those are created or updated.
-//
-// NOTE: The +kubebuilder:object:generate=false marker prevents controller-gen from generating DeepCopy methods,
-// as it is used only for temporary operations and does not need to be deeply copied.
+	if err := w.Defaulter.Default(ctx, obj); err != nil {
+		return admission.Errored(500, err)
+	}
+
+	marshaledObj, err := json.Marshal(obj)
+	if err != nil {
+		return admission.Errored(500, fmt.Errorf("failed to marshal object: %w", err))
+	}
+
+	return admission.PatchResponseFromRaw(req.Object.Raw, marshaledObj)
+}
+
+// MyComputeClassCustomDefaulter sets default values for MyComputeClass.
 type MyComputeClassCustomDefaulter struct {
 	Client client.Client
 }
 
-var _ webhook.CustomDefaulter = &MyComputeClassCustomDefaulter{}
+var _ admission.CustomDefaulter = &MyComputeClassCustomDefaulter{}
 
 // Default implements webhook.CustomDefaulter so a webhook will be registered for the Kind MyComputeClass.
 func (d *MyComputeClassCustomDefaulter) Default(ctx context.Context, obj runtime.Object) error {
 	pod, ok := obj.(*corev1.Pod)
-
 	if !ok {
-		return fmt.Errorf("expected a Pod object but got %T", obj)
+		return fmt.Errorf("expected Pod but got %T", obj)
 	}
+
 	mycomputeclasslog.Info("Applying default toleration to Pod", "podName", pod.GetName())
 
 	var myComputeClassList scalingv1.MyComputeClassList
@@ -74,7 +77,7 @@ func (d *MyComputeClassCustomDefaulter) Default(ctx context.Context, obj runtime
 		return fmt.Errorf("failed to list MyComputeClass resources: %w", err)
 	}
 
-	var priorityList []scalingv1.MyComputeClassProperty
+	var priorityList []scalingv1.InstanceProperty
 	for _, myComputeClass := range myComputeClassList.Items {
 		priorityList = append(priorityList, myComputeClass.Spec.Properties...)
 	}
@@ -83,92 +86,73 @@ func (d *MyComputeClassCustomDefaulter) Default(ctx context.Context, obj runtime
 		mycomputeclasslog.Info("No priority list defined, skipping defaulting")
 		return nil
 	}
-	// sort by priority
+
 	sort.Slice(priorityList, func(i, j int) bool {
 		return priorityList[i].Priority < priorityList[j].Priority
 	})
-
 	topPriorityInstanceType := priorityList[0].InstanceType
 	mycomputeclasslog.Info("Top priority instance type", "instanceType", topPriorityInstanceType)
 
-	if pod, ok := obj.(*corev1.Pod); ok {
-		mycomputeclasslog.Info("Applying toleration to Pod", "podName", pod.GetName())
-
-		// Check if the toleration already exists
-		tolerationExists := false
-		for _, toleration := range pod.Spec.Tolerations {
-			if toleration.Key == "my-compute-class" && toleration.Value == topPriorityInstanceType {
-				tolerationExists = true
-				break
-			}
+	tolerationExists := false
+	for _, toleration := range pod.Spec.Tolerations {
+		if toleration.Key == "my-compute-class" && toleration.Value == topPriorityInstanceType {
+			tolerationExists = true
+			break
 		}
-		// Add the toleration if it does not exist
-		// the value of the toleration is the top priority instance type
-		if !tolerationExists {
-			pod.Spec.Tolerations = append(pod.Spec.Tolerations, corev1.Toleration{
-				Key:      "my-compute-class",
-				Operator: corev1.TolerationOpEqual,
-				Value:    topPriorityInstanceType,
-				Effect:   corev1.TaintEffectNoSchedule,
-			})
-			mycomputeclasslog.Info("Toleration added", "podName", pod.GetName(), "instanceType", topPriorityInstanceType)
-		}
+	}
+	if !tolerationExists {
+		pod.Spec.Tolerations = append(pod.Spec.Tolerations, corev1.Toleration{
+			Key:      "my-compute-class",
+			Operator: corev1.TolerationOpEqual,
+			Value:    topPriorityInstanceType,
+			Effect:   corev1.TaintEffectNoSchedule,
+		})
+		mycomputeclasslog.Info("Toleration added", "podName", pod.GetName(), "instanceType", topPriorityInstanceType)
 	}
 
 	return nil
 }
 
-// TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
-// NOTE: The 'path' attribute must follow a specific pattern and should not be modified directly here.
-// Modifying the path for an invalid path can cause API server errors; failing to locate the webhook.
-// +kubebuilder:webhook:path=/validate-scaling-tryu-com-v1-mycomputeclass,mutating=false,failurePolicy=fail,sideEffects=None,groups=scaling.tryu.com,resources=mycomputeclasses,verbs=create;update,versions=v1,name=vmycomputeclass-v1.kb.io,admissionReviewVersions=v1
-
-// MyComputeClassCustomValidator struct is responsible for validating the MyComputeClass resource
-// when it is created, updated, or deleted.
-//
-// NOTE: The +kubebuilder:object:generate=false marker prevents controller-gen from generating DeepCopy methods,
-// as this struct is used only for temporary operations and does not need to be deeply copied.
-type MyComputeClassCustomValidator struct {
-	//TODO(user): Add more fields as needed for validation
-}
+// MyComputeClassCustomValidator validates the MyComputeClass resource when it is created, updated, or deleted.
+type MyComputeClassCustomValidator struct{}
 
 var _ webhook.CustomValidator = &MyComputeClassCustomValidator{}
 
-// ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type MyComputeClass.
+// ValidateCreate validates MyComputeClass upon creation.
 func (v *MyComputeClassCustomValidator) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
 	mycomputeclass, ok := obj.(*scalingv1.MyComputeClass)
 	if !ok {
-		return nil, fmt.Errorf("expected a MyComputeClass object but got %T", obj)
+		return nil, fmt.Errorf("expected MyComputeClass object but got %T", obj)
 	}
 	mycomputeclasslog.Info("Validation for MyComputeClass upon creation", "name", mycomputeclass.GetName())
 
-	// TODO(user): fill in your validation logic upon object creation.
+	// TODO(user): Add validation logic upon creation.
 
 	return nil, nil
 }
 
-// ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type MyComputeClass.
+// ValidateUpdate validates MyComputeClass upon update.
 func (v *MyComputeClassCustomValidator) ValidateUpdate(ctx context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
 	mycomputeclass, ok := newObj.(*scalingv1.MyComputeClass)
 	if !ok {
-		return nil, fmt.Errorf("expected a MyComputeClass object for the newObj but got %T", newObj)
+		return nil, fmt.Errorf("expected MyComputeClass object but got %T", newObj)
 	}
 	mycomputeclasslog.Info("Validation for MyComputeClass upon update", "name", mycomputeclass.GetName())
 
-	// TODO(user): fill in your validation logic upon object update.
+	// TODO(user): Add validation logic upon update.
 
 	return nil, nil
 }
 
-// ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type MyComputeClass.
+// ValidateDelete validates MyComputeClass upon deletion.
 func (v *MyComputeClassCustomValidator) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
 	mycomputeclass, ok := obj.(*scalingv1.MyComputeClass)
 	if !ok {
-		return nil, fmt.Errorf("expected a MyComputeClass object but got %T", obj)
+		return nil, fmt.Errorf("expected MyComputeClass object but got %T", obj)
 	}
 	mycomputeclasslog.Info("Validation for MyComputeClass upon deletion", "name", mycomputeclass.GetName())
 
-	// TODO(user): fill in your validation logic upon object deletion.
+	// TODO(user): Add validation logic upon deletion.
 
 	return nil, nil
 }
