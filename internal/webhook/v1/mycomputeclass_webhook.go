@@ -45,7 +45,7 @@ func SetupMyComputeClassWebhookWithManager(mgr ctrl.Manager) error {
 
 // TODO(user): EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 
-// +kubebuilder:webhook:path=/mutate-scaling-tryu-com-v1-mycomputeclass,mutating=true,failurePolicy=fail,sideEffects=None,groups=scaling.tryu.com,resources=mycomputeclasses,verbs=create;update,versions=v1,name=mmycomputeclass-v1.kb.io,admissionReviewVersions=v1
+// +kubebuilder:webhook:path=/mutate-core-v1-pod,mutating=true,failurePolicy=fail,sideEffects=None,groups="",resources=pods,verbs=create,versions=v1,name=mpod.kb.io,admissionReviewVersions=v1
 
 // MyComputeClassCustomDefaulter struct is responsible for setting default values on the custom resource of the
 // Kind MyComputeClass when those are created or updated.
