@@ -8,7 +8,7 @@ webhooks:
   clientConfig:
     service:
       name: webhook-service
-      namespace: system
+      namespace: my-computeclass-system
       path: /mutate-core-v1-pod # webhook endpoint
   admissionReviewVersions:
   - v1
@@ -20,6 +20,11 @@ webhooks:
     - CREATE
     resources:
     - pods # check for pods
+  namespaceSelector: # exclude namespace
+    matchExpressions:
+      - key: kubernetes.io/metadata.name
+        operator: NotIn
+        values: ["my-computeclass-system"]
   sideEffects: None
 ---
 apiVersion: admissionregistration.k8s.io/v1
@@ -32,7 +37,7 @@ webhooks:
   clientConfig:
     service:
       name: webhook-service
-      namespace: system
+      namespace: my-computeclass-system
       path: /validate-scaling-tryu-com-v1-mycomputeclass
   failurePolicy: Fail
   name: vmycomputeclass-v1.kb.io
