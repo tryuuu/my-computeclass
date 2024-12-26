@@ -1,0 +1,6 @@
+nameReference:
+- kind: Certificate
+  version: v1
+  fieldSpecs:
+  - path: spec/secretName
+    kind: Certificate
