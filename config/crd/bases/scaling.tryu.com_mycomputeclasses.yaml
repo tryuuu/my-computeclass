@@ -42,12 +42,12 @@ spec:
               properties:
                 items:
                   properties:
-                    instanceType:
+                    machineFamily:
                       type: string
                     priority:
                       type: integer
                   required:
-                  - instanceType
+                  - machineFamily
                   - priority
                   type: object
                 type: array
