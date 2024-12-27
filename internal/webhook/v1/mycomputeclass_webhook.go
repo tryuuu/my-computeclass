@@ -90,12 +90,12 @@ func (d *MyComputeClassCustomDefaulter) Default(ctx context.Context, obj runtime
 	sort.Slice(priorityList, func(i, j int) bool {
 		return priorityList[i].Priority < priorityList[j].Priority
 	})
-	topPriorityInstanceType := priorityList[0].InstanceType
-	mycomputeclasslog.Info("Top priority instance type", "instanceType", topPriorityInstanceType)
+	topPriorityMachineFamily := priorityList[0].MachineFamily
+	mycomputeclasslog.Info("Top priority instance type", "machineFamily", topPriorityMachineFamily)
 
 	tolerationExists := false
 	for _, toleration := range pod.Spec.Tolerations {
-		if toleration.Key == "my-compute-class" && toleration.Value == topPriorityInstanceType {
+		if toleration.Key == "my-compute-class" && toleration.Value == topPriorityMachineFamily {
 			tolerationExists = true
 			break
 		}
@@ -104,10 +104,10 @@ func (d *MyComputeClassCustomDefaulter) Default(ctx context.Context, obj runtime
 		pod.Spec.Tolerations = append(pod.Spec.Tolerations, corev1.Toleration{
 			Key:      "my-compute-class",
 			Operator: corev1.TolerationOpEqual,
-			Value:    topPriorityInstanceType,
+			Value:    topPriorityMachineFamily,
 			Effect:   corev1.TaintEffectNoSchedule,
 		})
-		mycomputeclasslog.Info("Toleration added", "podName", pod.GetName(), "instanceType", topPriorityInstanceType)
+		mycomputeclasslog.Info("Toleration added", "podName", pod.GetName(), "machineFamily", topPriorityMachineFamily)
 	}
 
 	return nil

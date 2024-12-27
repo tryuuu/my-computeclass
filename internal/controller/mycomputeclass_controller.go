@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	container "cloud.google.com/go/container/apiv1"
@@ -105,6 +106,7 @@ func (r *MyComputeClassReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	for _, nodePool := range resp.NodePools {
 		machineType := ""
 		if nodePool.Config != nil {
+			// https://cloud.google.com/kubernetes-engine/docs/reference/rest/v1/NodeConfig
 			machineType = nodePool.Config.MachineType
 		}
 		logger.Info("NodePool", "name", nodePool.Name, "status", nodePool.Status, "machineType", machineType)
@@ -126,25 +128,26 @@ func (r *MyComputeClassReconciler) applyTaintToNodePool(ctx context.Context, mac
 		return err
 	}
 	for _, node := range nodeList.Items {
-		logger.Info("Applying taint to node", "nodeName", node.Name, "machineType", machineType)
+		machineFamily := extractMachineFamily(machineType)
+		logger.Info("Applying taint to node", "nodeName", node.Name, "machineType", machineFamily)
 
 		// Check if the taint already exists
 		taintExists := false
 		for _, taint := range node.Spec.Taints {
-			if taint.Key == "my-compute-class" && taint.Value == machineType {
+			if taint.Key == "my-compute-class" && taint.Value == machineFamily {
 				taintExists = true
 				break
 			}
 		}
 		if taintExists {
-			logger.Info("Taint already exists", "nodeName", node.Name, "machineType", machineType)
+			logger.Info("Taint already exists", "nodeName", node.Name, "machineFamily", machineFamily)
 			continue
 		}
 
 		// Add taint
 		newTaint := corev1.Taint{
 			Key:    "my-compute-class",
-			Value:  machineType,
+			Value:  machineFamily,
 			Effect: corev1.TaintEffectNoSchedule,
 		}
 		node.Spec.Taints = append(node.Spec.Taints, newTaint)
@@ -165,4 +168,13 @@ func (r *MyComputeClassReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		For(&scalingv1.MyComputeClass{}).
 		Named("mycomputeclass").
 		Complete(r)
+}
+
+// extracts machine family from machine type
+func extractMachineFamily(machineType string) string {
+	parts := strings.Split(machineType, "-")
+	if len(parts) > 0 {
+		return parts[0]
+	}
+	return ""
 }
