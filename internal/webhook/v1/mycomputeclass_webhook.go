@@ -93,23 +93,8 @@ func (d *MyComputeClassCustomDefaulter) Default(ctx context.Context, obj runtime
 	topPriorityMachineFamily := priorityList[0].MachineFamily
 	mycomputeclasslog.Info("Top priority instance type", "machineFamily", topPriorityMachineFamily)
 
-	tolerationExists := false
-	for _, toleration := range pod.Spec.Tolerations {
-		if toleration.Key == "my-compute-class" && toleration.Value == topPriorityMachineFamily {
-			tolerationExists = true
-			break
-		}
-	}
-	if !tolerationExists {
-		pod.Spec.Tolerations = append(pod.Spec.Tolerations, corev1.Toleration{
-			Key:      "my-compute-class",
-			Operator: corev1.TolerationOpEqual,
-			Value:    topPriorityMachineFamily,
-			Effect:   corev1.TaintEffectNoSchedule,
-		})
-		mycomputeclasslog.Info("Toleration added", "podName", pod.GetName(), "machineFamily", topPriorityMachineFamily)
-	}
-
+	d.addTolerations(pod, topPriorityMachineFamily)
+	d.addNodeAffinity(pod, topPriorityMachineFamily)
 	return nil
 }
 
@@ -155,4 +140,53 @@ func (v *MyComputeClassCustomValidator) ValidateDelete(ctx context.Context, obj 
 	// TODO(user): Add validation logic upon deletion.
 
 	return nil, nil
+}
+
+// addTolerations adds a toleration to the Pod if it doesn't already exist.
+func (d *MyComputeClassCustomDefaulter) addTolerations(pod *corev1.Pod, machineFamily string) {
+	tolerationExists := false
+	for _, toleration := range pod.Spec.Tolerations {
+		if toleration.Key == "my-compute-class" && toleration.Value == machineFamily {
+			tolerationExists = true
+			mycomputeclasslog.Info("Toleration already exists", "podName", pod.GetName(), "machineFamily", machineFamily)
+			break
+		}
+	}
+
+	if !tolerationExists {
+		pod.Spec.Tolerations = append(pod.Spec.Tolerations, corev1.Toleration{
+			Key:      "my-compute-class",
+			Operator: corev1.TolerationOpEqual,
+			Value:    machineFamily,
+			Effect:   corev1.TaintEffectNoSchedule,
+		})
+		mycomputeclasslog.Info("Toleration added", "podName", pod.GetName(), "machineFamily", machineFamily)
+	}
+}
+
+// addNodeAffinity adds a NodeAffinity rule to the Pod for the specified machine family.
+func (d *MyComputeClassCustomDefaulter) addNodeAffinity(pod *corev1.Pod, machineFamily string) {
+	if pod.Spec.Affinity == nil {
+		pod.Spec.Affinity = &corev1.Affinity{}
+	}
+	if pod.Spec.Affinity.NodeAffinity == nil {
+		pod.Spec.Affinity.NodeAffinity = &corev1.NodeAffinity{}
+	}
+	if pod.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution == nil {
+		pod.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution = &corev1.NodeSelector{}
+	}
+
+	pod.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms = append(
+		pod.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms,
+		corev1.NodeSelectorTerm{
+			MatchExpressions: []corev1.NodeSelectorRequirement{
+				{
+					Key:      "cloud.google.com/machine-family",
+					Operator: corev1.NodeSelectorOpIn,
+					Values:   []string{machineFamily},
+				},
+			},
+		},
+	)
+	mycomputeclasslog.Info("NodeAffinity added", "podName", pod.GetName(), "machineFamily", machineFamily)
 }
