@@ -4,9 +4,9 @@ metadata:
   name: instance-priority
 spec:
   properties:
-    - instanceType: "n2-standard-2"
+    - machineFamily: n2
       priority: 1
-    - instanceType: "n2d-standard-2"
+    - machineFamily: n2d
       priority: 2
-    - instanceType: "e2-standard-2"
+    - machineFamily: e2
       priority: 3
