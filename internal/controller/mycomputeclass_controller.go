@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"time"
 
 	container "cloud.google.com/go/container/apiv1"
 	containerpb "google.golang.org/genproto/googleapis/container/v1"
@@ -107,26 +108,14 @@ func (r *MyComputeClassReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			machineType = nodePool.Config.MachineType
 		}
 		logger.Info("NodePool", "name", nodePool.Name, "status", nodePool.Status, "machineType", machineType)
-
-		found := false
-		for _, prop := range priorityList {
-			// check if the machine type is in the priority list
-			if prop.InstanceType == machineType {
-				found = true
-				break
-			}
-		}
-		if !found {
-			continue
-		}
 		// apply taint
 		if err := r.applyTaintToNodePool(ctx, machineType); err != nil {
 			logger.Error(err, "Failed to apply taint")
 			return ctrl.Result{}, err
 		}
 	}
-
-	return ctrl.Result{}, nil
+	// Repeat after 15s
+	return ctrl.Result{RequeueAfter: 15 * time.Second}, nil
 }
 func (r *MyComputeClassReconciler) applyTaintToNodePool(ctx context.Context, machineType string) error {
 	logger := log.FromContext(ctx)
