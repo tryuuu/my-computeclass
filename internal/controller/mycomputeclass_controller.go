@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	"time"
 
 	container "cloud.google.com/go/container/apiv1"
 	containerpb "google.golang.org/genproto/googleapis/container/v1"
@@ -116,8 +115,7 @@ func (r *MyComputeClassReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			return ctrl.Result{}, err
 		}
 	}
-	// Repeat after 15s
-	return ctrl.Result{RequeueAfter: 15 * time.Second}, nil
+	return ctrl.Result{}, nil
 }
 func (r *MyComputeClassReconciler) applyTaintToNodePool(ctx context.Context, machineType string) error {
 	logger := log.FromContext(ctx)

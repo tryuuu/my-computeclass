@@ -33,14 +33,28 @@ type CustomDefaulterWrapper struct {
 	Defaulter admission.CustomDefaulter
 }
 
+type CustomDefaulter interface {
+	DefaultPod(ctx context.Context, pod *corev1.Pod) error
+	DefaultNode(ctx context.Context, node *corev1.Node) error
+}
+
+var _ CustomDefaulter = &MyComputeClassCustomDefaulter{}
+
 // Handle implements admission.Handler interface by invoking CustomDefaulter's Default method.
 func (w *CustomDefaulterWrapper) Handle(ctx context.Context, req admission.Request) admission.Response {
-	if req.Kind.Kind != "Pod" {
-		return admission.Errored(400, fmt.Errorf("expected Pod but got %s", req.Kind.Kind))
+	var obj runtime.Object
+
+	switch req.Kind.Kind {
+	case "Pod":
+		obj = &corev1.Pod{}
+	case "Node":
+		obj = &corev1.Node{}
+	default:
+		return admission.Errored(400, fmt.Errorf("unsupported resource type: %s", req.Kind.Kind))
 	}
-	obj := &corev1.Pod{}
+
 	if err := json.Unmarshal(req.Object.Raw, obj); err != nil {
-		return admission.Errored(400, fmt.Errorf("failed to unmarshal object: %w", err))
+		return admission.Errored(400, fmt.Errorf("failed to unmarshal resource: %w", err))
 	}
 
 	if err := w.Defaulter.Default(ctx, obj); err != nil {
@@ -51,8 +65,18 @@ func (w *CustomDefaulterWrapper) Handle(ctx context.Context, req admission.Reque
 	if err != nil {
 		return admission.Errored(500, fmt.Errorf("failed to marshal object: %w", err))
 	}
-
 	return admission.PatchResponseFromRaw(req.Object.Raw, marshaledObj)
+}
+
+func (d *MyComputeClassCustomDefaulter) Default(ctx context.Context, obj runtime.Object) error {
+	switch obj := obj.(type) {
+	case *corev1.Pod:
+		return d.DefaultPod(ctx, obj)
+	case *corev1.Node:
+		return d.DefaultNode(ctx, obj)
+	default:
+		return fmt.Errorf("unsupported resource type: %T", obj)
+	}
 }
 
 // MyComputeClassCustomDefaulter sets default values for MyComputeClass.
@@ -63,12 +87,7 @@ type MyComputeClassCustomDefaulter struct {
 var _ admission.CustomDefaulter = &MyComputeClassCustomDefaulter{}
 
 // Default implements webhook.CustomDefaulter so a webhook will be registered for the Kind MyComputeClass.
-func (d *MyComputeClassCustomDefaulter) Default(ctx context.Context, obj runtime.Object) error {
-	pod, ok := obj.(*corev1.Pod)
-	if !ok {
-		return fmt.Errorf("expected Pod but got %T", obj)
-	}
-
+func (d *MyComputeClassCustomDefaulter) DefaultPod(ctx context.Context, pod *corev1.Pod) error {
 	mycomputeclasslog.Info("Applying default toleration to Pod", "podName", pod.GetName())
 
 	var myComputeClassList scalingv1.MyComputeClassList
@@ -95,6 +114,10 @@ func (d *MyComputeClassCustomDefaulter) Default(ctx context.Context, obj runtime
 
 	d.addTolerations(pod, topPriorityMachineFamily)
 	d.addNodeAffinity(pod, priorityList)
+	return nil
+}
+
+func (d *MyComputeClassCustomDefaulter) DefaultNode(ctx context.Context, node *corev1.Node) error {
 	return nil
 }
 

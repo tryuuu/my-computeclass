@@ -164,6 +164,14 @@ func main() {
 			},
 		})
 
+		webhookServer.Register("/mutate-core-v1-node", &admission.Webhook{
+			Handler: &webhookscalingv1.CustomDefaulterWrapper{
+				Defaulter: &webhookscalingv1.MyComputeClassCustomDefaulter{
+					Client: mgr.GetClient(),
+				},
+			},
+		})
+
 		// Register the MyComputeClass webhook with the manager
 		if err = webhookscalingv1.SetupMyComputeClassWebhookWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create webhook", "webhook", "MyComputeClass")
