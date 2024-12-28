@@ -94,7 +94,7 @@ func (d *MyComputeClassCustomDefaulter) Default(ctx context.Context, obj runtime
 	mycomputeclasslog.Info("Top priority instance type", "machineFamily", topPriorityMachineFamily)
 
 	d.addTolerations(pod, topPriorityMachineFamily)
-	d.addNodeAffinity(pod, topPriorityMachineFamily)
+	d.addNodeAffinity(pod, priorityList)
 	return nil
 }
 
@@ -164,8 +164,8 @@ func (d *MyComputeClassCustomDefaulter) addTolerations(pod *corev1.Pod, machineF
 	}
 }
 
-// addNodeAffinity adds a NodeAffinity rule to the Pod for the specified machine family.
-func (d *MyComputeClassCustomDefaulter) addNodeAffinity(pod *corev1.Pod, machineFamily string) {
+// addNodeAffinity adds NodeAffinity rules to the Pod for each machine family in the priority list.
+func (d *MyComputeClassCustomDefaulter) addNodeAffinity(pod *corev1.Pod, priorityList []scalingv1.InstanceProperty) {
 	if pod.Spec.Affinity == nil {
 		pod.Spec.Affinity = &corev1.Affinity{}
 	}
@@ -176,17 +176,20 @@ func (d *MyComputeClassCustomDefaulter) addNodeAffinity(pod *corev1.Pod, machine
 		pod.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution = &corev1.NodeSelector{}
 	}
 
-	pod.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms = append(
-		pod.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms,
-		corev1.NodeSelectorTerm{
-			MatchExpressions: []corev1.NodeSelectorRequirement{
-				{
-					Key:      "cloud.google.com/machine-family",
-					Operator: corev1.NodeSelectorOpIn,
-					Values:   []string{machineFamily},
+	for _, property := range priorityList {
+		machineFamily := property.MachineFamily
+		pod.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms = append(
+			pod.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms,
+			corev1.NodeSelectorTerm{
+				MatchExpressions: []corev1.NodeSelectorRequirement{
+					{
+						Key:      "cloud.google.com/machine-family",
+						Operator: corev1.NodeSelectorOpIn,
+						Values:   []string{machineFamily},
+					},
 				},
 			},
-		},
-	)
-	mycomputeclasslog.Info("NodeAffinity added", "podName", pod.GetName(), "machineFamily", machineFamily)
+		)
+		mycomputeclasslog.Info("NodeAffinity added", "podName", pod.GetName(), "machineFamily", machineFamily)
+	}
 }
