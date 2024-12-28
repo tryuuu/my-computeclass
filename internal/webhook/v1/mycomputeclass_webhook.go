@@ -34,8 +34,8 @@ type CustomDefaulterWrapper struct {
 }
 
 type CustomDefaulter interface {
-	DefaultPod(ctx context.Context, pod *corev1.Pod) error
-	DefaultNode(ctx context.Context, node *corev1.Node) error
+	AddTolerations(ctx context.Context, pod *corev1.Pod) error
+	AddTaints(ctx context.Context, node *corev1.Node) error
 }
 
 var _ CustomDefaulter = &MyComputeClassCustomDefaulter{}
@@ -71,9 +71,9 @@ func (w *CustomDefaulterWrapper) Handle(ctx context.Context, req admission.Reque
 func (d *MyComputeClassCustomDefaulter) Default(ctx context.Context, obj runtime.Object) error {
 	switch obj := obj.(type) {
 	case *corev1.Pod:
-		return d.DefaultPod(ctx, obj)
+		return d.AddTolerations(ctx, obj)
 	case *corev1.Node:
-		return d.DefaultNode(ctx, obj)
+		return d.AddTaints(ctx, obj)
 	default:
 		return fmt.Errorf("unsupported resource type: %T", obj)
 	}
@@ -87,7 +87,7 @@ type MyComputeClassCustomDefaulter struct {
 var _ admission.CustomDefaulter = &MyComputeClassCustomDefaulter{}
 
 // Default implements webhook.CustomDefaulter so a webhook will be registered for the Kind MyComputeClass.
-func (d *MyComputeClassCustomDefaulter) DefaultPod(ctx context.Context, pod *corev1.Pod) error {
+func (d *MyComputeClassCustomDefaulter) AddTolerations(ctx context.Context, pod *corev1.Pod) error {
 	mycomputeclasslog.Info("Applying default toleration to Pod", "podName", pod.GetName())
 
 	var myComputeClassList scalingv1.MyComputeClassList
@@ -117,7 +117,35 @@ func (d *MyComputeClassCustomDefaulter) DefaultPod(ctx context.Context, pod *cor
 	return nil
 }
 
-func (d *MyComputeClassCustomDefaulter) DefaultNode(ctx context.Context, node *corev1.Node) error {
+func (d *MyComputeClassCustomDefaulter) AddTaints(ctx context.Context, node *corev1.Node) error {
+	mycomputeclasslog.Info("Applying default taint to Node", "nodeName", node.GetName())
+
+	// get the machineFamily label from the Node
+	machineFamily, exists := node.Labels["cloud.google.com/machine-family"]
+	if !exists || machineFamily == "" {
+		mycomputeclasslog.Info("Node does not have a machineFamily label, skipping taint application", "nodeName", node.GetName())
+		return nil
+	}
+
+	// make a taint
+	taint := corev1.Taint{
+		Key:    "my-compute-class",
+		Value:  machineFamily,
+		Effect: corev1.TaintEffectNoSchedule,
+	}
+
+	// check if the taint already exists
+	for _, existingTaint := range node.Spec.Taints {
+		if existingTaint.Key == taint.Key {
+			mycomputeclasslog.Info("Taint already exists on Node, skipping addition", "nodeName", node.GetName(), "key", taint.Key)
+			return nil
+		}
+	}
+
+	// add the taint to the node
+	node.Spec.Taints = append(node.Spec.Taints, taint)
+
+	mycomputeclasslog.Info("Taint successfully applied to Node", "nodeName", node.GetName(), "taint", taint)
 	return nil
 }
 
