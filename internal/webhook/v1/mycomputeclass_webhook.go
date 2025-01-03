@@ -34,7 +34,7 @@ type CustomDefaulterWrapper struct {
 }
 
 type CustomDefaulter interface {
-	AddTolerations(ctx context.Context, pod *corev1.Pod) error
+	AddPodSettings(ctx context.Context, pod *corev1.Pod) error
 	AddTaints(ctx context.Context, node *corev1.Node) error
 }
 
@@ -71,7 +71,7 @@ func (w *CustomDefaulterWrapper) Handle(ctx context.Context, req admission.Reque
 func (d *MyComputeClassCustomDefaulter) Default(ctx context.Context, obj runtime.Object) error {
 	switch obj := obj.(type) {
 	case *corev1.Pod:
-		return d.AddTolerations(ctx, obj)
+		return d.AddPodSettings(ctx, obj)
 	case *corev1.Node:
 		return d.AddTaints(ctx, obj)
 	default:
@@ -87,33 +87,27 @@ type MyComputeClassCustomDefaulter struct {
 var _ admission.CustomDefaulter = &MyComputeClassCustomDefaulter{}
 
 // Default implements webhook.CustomDefaulter so a webhook will be registered for the Kind MyComputeClass.
-func (d *MyComputeClassCustomDefaulter) AddTolerations(ctx context.Context, pod *corev1.Pod) error {
+func (d *MyComputeClassCustomDefaulter) AddPodSettings(ctx context.Context, pod *corev1.Pod) error {
 	mycomputeclasslog.Info("Applying default toleration to Pod", "podName", pod.GetName())
 
-	var myComputeClassList scalingv1.MyComputeClassList
-	if err := d.Client.List(ctx, &myComputeClassList); err != nil {
-		mycomputeclasslog.Error(err, "Failed to list MyComputeClass resources")
-		return fmt.Errorf("failed to list MyComputeClass resources: %w", err)
+	// get the priority list and top machine family
+	priorityList, topPriorityMachineFamily, err := d.InitializeSettings(ctx)
+	if err != nil {
+		return err
 	}
 
-	var priorityList []scalingv1.InstanceProperty
-	for _, myComputeClass := range myComputeClassList.Items {
-		priorityList = append(priorityList, myComputeClass.Spec.Properties...)
-	}
-
-	if len(priorityList) == 0 {
-		mycomputeclasslog.Info("No priority list defined, skipping defaulting")
-		return nil
-	}
-
-	sort.Slice(priorityList, func(i, j int) bool {
-		return priorityList[i].Priority < priorityList[j].Priority
-	})
-	topPriorityMachineFamily := priorityList[0].MachineFamily
-	mycomputeclasslog.Info("Top priority instance type", "machineFamily", topPriorityMachineFamily)
-
+	// add tolerations
 	d.addTolerations(pod, topPriorityMachineFamily)
+	// add node affinity(avoid scheduled to default e2 instances)
 	d.addNodeAffinity(pod, priorityList)
+
+	// check custom resource for Spot instance
+	if priorityList[0].Spot != nil && *priorityList[0].Spot {
+		d.addSpotNodeSelector(pod)
+	}
+	if priorityList[0].Spot != nil && !*priorityList[0].Spot {
+		d.addNonSpotNodeAffinity(pod)
+	}
 	return nil
 }
 
@@ -193,6 +187,81 @@ func (v *MyComputeClassCustomValidator) ValidateDelete(ctx context.Context, obj 
 	return nil, nil
 }
 
+func (d *MyComputeClassCustomDefaulter) InitializeSettings(ctx context.Context) ([]scalingv1.InstanceProperty, string, error) {
+	var myComputeClassList scalingv1.MyComputeClassList
+	if err := d.Client.List(ctx, &myComputeClassList); err != nil {
+		mycomputeclasslog.Error(err, "Failed to list MyComputeClass resources")
+		return nil, "", fmt.Errorf("failed to list MyComputeClass resources: %w", err)
+	}
+
+	var priorityList []scalingv1.InstanceProperty
+	for _, myComputeClass := range myComputeClassList.Items {
+		priorityList = append(priorityList, myComputeClass.Spec.Properties...)
+	}
+
+	if len(priorityList) == 0 {
+		mycomputeclasslog.Info("No priority list defined, skipping defaulting")
+		return nil, "", nil
+	}
+
+	sort.Slice(priorityList, func(i, j int) bool {
+		return priorityList[i].Priority < priorityList[j].Priority
+	})
+	topPriorityMachineFamily := priorityList[0].MachineFamily
+	mycomputeclasslog.Info("Top priority instance type", "machineFamily", topPriorityMachineFamily)
+
+	return priorityList, topPriorityMachineFamily, nil
+}
+
+func (d *MyComputeClassCustomDefaulter) addNonSpotNodeAffinity(pod *corev1.Pod) {
+	if pod.Spec.Affinity == nil {
+		pod.Spec.Affinity = &corev1.Affinity{}
+	}
+	if pod.Spec.Affinity.NodeAffinity == nil {
+		pod.Spec.Affinity.NodeAffinity = &corev1.NodeAffinity{}
+	}
+	if pod.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution == nil {
+		pod.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution = &corev1.NodeSelector{}
+	}
+
+	// Collect existing NodeSelectorTerms
+	existingTerms := pod.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms
+
+	// Merge existing terms with the "non-spot" condition
+	mergedSelector := corev1.NodeSelectorTerm{
+		MatchExpressions: []corev1.NodeSelectorRequirement{
+			{
+				Key:      "cloud.google.com/gke-preemptible",
+				Operator: corev1.NodeSelectorOpNotIn,
+				Values:   []string{"true"},
+			},
+		},
+	}
+
+	// Add existing terms as part of the new MatchExpressions
+	for _, term := range existingTerms {
+		mergedSelector.MatchExpressions = append(mergedSelector.MatchExpressions, term.MatchExpressions...)
+	}
+
+	// Replace all terms with the merged selector
+	pod.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms = []corev1.NodeSelectorTerm{mergedSelector}
+
+	mycomputeclasslog.Info("Updated NodeAffinity for non-spot with merged conditions", "podName", pod.GetName())
+}
+
+// add node selector for spot instance
+func (d *MyComputeClassCustomDefaulter) addSpotNodeSelector(pod *corev1.Pod) {
+	if pod.Spec.NodeSelector == nil {
+		pod.Spec.NodeSelector = map[string]string{}
+	}
+
+	// Add node selector for spot instances
+	pod.Spec.NodeSelector["cloud.google.com/gke-preemptible"] = "true"
+	pod.Spec.NodeSelector["cloud.google.com/gke-provisioning"] = "preemptible"
+
+	mycomputeclasslog.Info("Added spot node selector to Pod", "podName", pod.GetName())
+}
+
 // addTolerations adds a toleration to the Pod if it doesn't already exist.
 func (d *MyComputeClassCustomDefaulter) addTolerations(pod *corev1.Pod, machineFamily string) {
 	tolerationExists := false
@@ -227,20 +296,27 @@ func (d *MyComputeClassCustomDefaulter) addNodeAffinity(pod *corev1.Pod, priorit
 		pod.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution = &corev1.NodeSelector{}
 	}
 
+	// Combine all machine families into a single NodeSelectorTerm
+	machineFamilies := []string{}
 	for _, property := range priorityList {
-		machineFamily := property.MachineFamily
-		pod.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms = append(
-			pod.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms,
-			corev1.NodeSelectorTerm{
-				MatchExpressions: []corev1.NodeSelectorRequirement{
-					{
-						Key:      "cloud.google.com/machine-family",
-						Operator: corev1.NodeSelectorOpIn,
-						Values:   []string{machineFamily},
-					},
-				},
-			},
-		)
-		mycomputeclasslog.Info("NodeAffinity added", "podName", pod.GetName(), "machineFamily", machineFamily)
+		machineFamilies = append(machineFamilies, property.MachineFamily)
 	}
+
+	nodeSelector := corev1.NodeSelectorTerm{
+		MatchExpressions: []corev1.NodeSelectorRequirement{
+			{
+				Key:      "cloud.google.com/machine-family",
+				Operator: corev1.NodeSelectorOpIn,
+				Values:   machineFamilies,
+			},
+		},
+	}
+
+	// Append the combined NodeSelectorTerm
+	pod.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms = append(
+		pod.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms,
+		nodeSelector,
+	)
+
+	mycomputeclasslog.Info("NodeAffinity added", "podName", pod.GetName(), "machineFamilies", machineFamilies)
 }
