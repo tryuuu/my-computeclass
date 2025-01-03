@@ -6,7 +6,7 @@ spec:
   properties:
     - machineFamily: n2
       priority: 1
-      spot: false
+      spot: true
     - machineFamily: n2d
       priority: 2
       spot: true

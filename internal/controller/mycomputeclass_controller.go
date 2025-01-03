@@ -63,7 +63,6 @@ func (r *MyComputeClassReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		logger.Error(err, "Failed to create GKE client")
 		return ctrl.Result{}, err
 	}
-	defer gkeClient.Close()
 	logger.Info("GKE client created")
 
 	// Fetch the MyComputeClass instance
