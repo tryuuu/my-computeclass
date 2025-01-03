@@ -1,0 +1,13 @@
+apiVersion: cloud.google.com/v1
+kind: ComputeClass
+metadata:
+  name: dev-class
+spec:
+  priorities:
+  # n2を優先して利用
+  - machineFamily: n2
+    spot: true
+  - machineFamily: n2d
+    spot: true
+  nodePoolAutoCreation:
+    enabled: true

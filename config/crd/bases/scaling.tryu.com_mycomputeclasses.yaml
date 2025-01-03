@@ -46,6 +46,8 @@ spec:
                       type: string
                     priority:
                       type: integer
+                    spot:
+                      type: boolean
                   required:
                   - machineFamily
                   - priority

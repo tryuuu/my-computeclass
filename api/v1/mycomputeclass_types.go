@@ -37,6 +37,7 @@ type MyComputeClassStatus struct {
 type InstanceProperty struct {
 	MachineFamily string `json:"machineFamily"`
 	Priority      int    `json:"priority"`
+	Spot          *bool  `json:"spot,omitempty"`
 }
 
 // +kubebuilder:object:root=true
