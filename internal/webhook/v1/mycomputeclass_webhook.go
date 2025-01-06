@@ -28,19 +28,20 @@ func SetupMyComputeClassWebhookWithManager(mgr ctrl.Manager) error {
 		Complete()
 }
 
-// CustomDefaulterWrapper wraps admission.CustomDefaulter to provide admission.Handler interface.
+// CustomDefaulterWrapper wraps admission.CustomDefaulter interface to provide admission.Handler interface.
 type CustomDefaulterWrapper struct {
 	Defaulter admission.CustomDefaulter
 }
 
-type CustomDefaulter interface {
-	AddPodSettings(ctx context.Context, pod *corev1.Pod) error
-	AddTaints(ctx context.Context, node *corev1.Node) error
+// MyComputeClassCustomDefaulter sets default values for MyComputeClass.
+type MyComputeClassCustomDefaulter struct {
+	Client client.Client
 }
 
-var _ CustomDefaulter = &MyComputeClassCustomDefaulter{}
+var _ admission.CustomDefaulter = &MyComputeClassCustomDefaulter{}
 
 // Handle implements admission.Handler interface by invoking CustomDefaulter's Default method.
+// https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.19.1/pkg/webhook/admission#Handler
 func (w *CustomDefaulterWrapper) Handle(ctx context.Context, req admission.Request) admission.Response {
 	var obj runtime.Object
 
@@ -78,13 +79,6 @@ func (d *MyComputeClassCustomDefaulter) Default(ctx context.Context, obj runtime
 		return fmt.Errorf("unsupported resource type: %T", obj)
 	}
 }
-
-// MyComputeClassCustomDefaulter sets default values for MyComputeClass.
-type MyComputeClassCustomDefaulter struct {
-	Client client.Client
-}
-
-var _ admission.CustomDefaulter = &MyComputeClassCustomDefaulter{}
 
 // Default implements webhook.CustomDefaulter so a webhook will be registered for the Kind MyComputeClass.
 func (d *MyComputeClassCustomDefaulter) AddPodSettings(ctx context.Context, pod *corev1.Pod) error {
