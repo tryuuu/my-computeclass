@@ -23,7 +23,7 @@ import (
 	"strings"
 
 	container "cloud.google.com/go/container/apiv1"
-	containerpb "google.golang.org/genproto/googleapis/container/v1"
+	containerpb "cloud.google.com/go/container/apiv1/containerpb"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -88,10 +88,6 @@ func (r *MyComputeClassReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	// https://cloud.google.com/python/docs/reference/container/latest/google.cloud.container_v1.types.ListNodePoolsRequest
 	reqNodePools := &containerpb.ListNodePoolsRequest{
 		Parent: fmt.Sprintf("projects/%s/locations/%s/clusters/%s", projectID, location, clusterName),
-	}
-	if err != nil {
-		logger.Error(err, "Failed to list NodePools")
-		return ctrl.Result{}, err
 	}
 	// list NodePools
 	// https://pkg.go.dev/google.golang.org/cloud/container/apiv1#ClusterManagerClient.ListNodePools
