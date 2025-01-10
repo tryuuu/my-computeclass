@@ -121,6 +121,13 @@ func createNodePool(priorityList []scalingv1.InstanceProperty, projectID, locati
 			Name: nodePoolName,
 			Config: &containerpb.NodeConfig{
 				MachineType: fmt.Sprintf("%s-standard-4", property.MachineFamily),
+				Preemptible: func() bool {
+					if property.Spot != nil {
+						return *property.Spot
+					}
+					return false // default
+
+				}(),
 			},
 			Autoscaling: &containerpb.NodePoolAutoscaling{
 				Enabled:      true,
