@@ -57,7 +57,7 @@ func (r *MyComputeClassReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	logger := log.FromContext(ctx)
 
 	// Initialize GKE client
-	// https://cloud.google.com/go/docs/reference/cloud.google.com/go/container/latest/apiv1
+	// https://cloud.google.com/go/docs/reference/cloud.google.com/go/container/latest/apiv1#cloud_google_com_go_container_apiv1_ClusterManagerClient_NewClusterManagerClient
 	gkeClient, err := container.NewClusterManagerClient(ctx)
 	if err != nil {
 		logger.Error(err, "Failed to create GKE client")
@@ -65,27 +65,23 @@ func (r *MyComputeClassReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 	logger.Info("GKE client created")
 
-	// Fetch the MyComputeClass instance
-	instance := &scalingv1.MyComputeClass{}
-	if err := r.Get(ctx, req.NamespacedName, instance); err != nil {
-		logger.Error(err, "Failed to get MyComputeClass")
+	priorityList, err := r.HandlePriorityList(ctx, req)
+	if err != nil {
+		logger.Error(err, "Failed to fetch or sort priority list")
 		return ctrl.Result{}, err
 	}
-	priorityList := instance.Spec.Properties
-	if len(priorityList) == 0 {
-		logger.Info("No priority list defined, skipping reconciliation")
-		return ctrl.Result{}, nil
-	}
-	// sort by priority
-	sort.Slice(priorityList, func(i, j int) bool {
-		return priorityList[i].Priority < priorityList[j].Priority
-	})
 
 	projectID := "ryu-project-441804"
 	location := "asia-northeast1"
 	clusterName := "sreake-intern-tryu-gke"
 
-	// https://cloud.google.com/python/docs/reference/container/latest/google.cloud.container_v1.types.ListNodePoolsRequest
+	// Provision new NodePool
+	err = createNodePool(priorityList, projectID, location, clusterName, gkeClient, ctx)
+	if err != nil {
+		logger.Error(err, "Failed to create node pool")
+		return ctrl.Result{}, err
+	}
+
 	reqNodePools := &containerpb.ListNodePoolsRequest{
 		Parent: fmt.Sprintf("projects/%s/locations/%s/clusters/%s", projectID, location, clusterName),
 	}
@@ -96,7 +92,7 @@ func (r *MyComputeClassReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		logger.Error(err, "Failed to list NodePools")
 		return ctrl.Result{}, err
 	}
-	// Log NodePools info
+
 	for _, nodePool := range resp.NodePools {
 		machineType := ""
 		if nodePool.Config != nil {
@@ -111,6 +107,72 @@ func (r *MyComputeClassReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		}
 	}
 	return ctrl.Result{}, nil
+}
+
+func createNodePool(priorityList []scalingv1.InstanceProperty, projectID, location, clusterName string, gkeClient *container.ClusterManagerClient, ctx context.Context) error {
+	logger := log.FromContext(ctx)
+	var err error
+
+	// Iterate over the priority list to find the first valid configuration
+	for _, property := range priorityList {
+		nodePoolName := fmt.Sprintf("nodepool-%s", property.MachineFamily)
+		// NodePool configuration
+		newNodePool := &containerpb.NodePool{
+			Name: nodePoolName,
+			Config: &containerpb.NodeConfig{
+				MachineType: fmt.Sprintf("%s-standard-4", property.MachineFamily),
+			},
+			Autoscaling: &containerpb.NodePoolAutoscaling{
+				Enabled:      true,
+				MinNodeCount: 1,
+				MaxNodeCount: 5,
+			},
+			InitialNodeCount: 1,
+		}
+
+		// Create the NodePool
+		req := &containerpb.CreateNodePoolRequest{
+			Parent:   fmt.Sprintf("projects/%s/locations/%s/clusters/%s", projectID, location, clusterName),
+			NodePool: newNodePool,
+		}
+
+		logger.Info("Creating NodePool", "nodePoolName", nodePoolName, "machineType", property.MachineFamily)
+		_, err = gkeClient.CreateNodePool(ctx, req)
+		if err != nil {
+			logger.Error(err, "Failed to create NodePool", "nodePoolName", nodePoolName)
+			continue
+		}
+
+		logger.Info("NodePool created successfully", "nodePoolName", nodePoolName)
+		return nil
+	}
+
+	logger.Info("No suitable configuration found in priority list for NodePool creation")
+	return fmt.Errorf("failed to create NodePool: no valid configurations found")
+}
+
+func (r *MyComputeClassReconciler) HandlePriorityList(ctx context.Context, req ctrl.Request) ([]scalingv1.InstanceProperty, error) {
+	logger := log.FromContext(ctx)
+
+	// Fetch the MyComputeClass instance
+	instance := &scalingv1.MyComputeClass{}
+	if err := r.Get(ctx, req.NamespacedName, instance); err != nil {
+		logger.Error(err, "Failed to get MyComputeClass")
+		return nil, err
+	}
+
+	priorityList := instance.Spec.Properties
+	if len(priorityList) == 0 {
+		logger.Info("No priority list defined")
+		return nil, nil
+	}
+
+	// Sort by priority
+	sort.Slice(priorityList, func(i, j int) bool {
+		return priorityList[i].Priority < priorityList[j].Priority
+	})
+
+	return priorityList, nil
 }
 func (r *MyComputeClassReconciler) applyTaintToNodePool(ctx context.Context, machineType string) error {
 	logger := log.FromContext(ctx)
