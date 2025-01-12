@@ -14,6 +14,14 @@ rules:
   - update
   - watch
 - apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
   - scaling.tryu.com
   resources:
   - mycomputeclasses
