@@ -15,6 +15,6 @@ kubectl annotate serviceaccount my-computeclass-controller-manager \
     -n my-computeclass-system \
     iam.gke.io/gcp-service-account=174043275706-compute@developer.gserviceaccount.com
 
-sleep 20
+sleep 45
 kubectl get pods -n my-computeclass-system
 kubectl apply -f config/samples/sample.yaml
