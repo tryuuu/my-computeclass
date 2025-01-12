@@ -116,6 +116,10 @@ func createNodePool(priorityList []scalingv1.InstanceProperty, projectID, locati
 	// Iterate over the priority list to find the first valid configuration
 	for _, property := range priorityList {
 		nodePoolName := fmt.Sprintf("auto-nodepool-%s", property.MachineFamily)
+		// spot node pool
+		if property.Spot != nil && *property.Spot {
+			nodePoolName = fmt.Sprintf("%s-spot", nodePoolName)
+		}
 		// NodePool configuration
 		newNodePool := &containerpb.NodePool{
 			Name: nodePoolName,
