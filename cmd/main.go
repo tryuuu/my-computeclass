@@ -21,6 +21,8 @@ import (
 	"flag"
 	"os"
 
+	"tryu.com/my-computeclass/internal/runnable"
+
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
@@ -177,6 +179,14 @@ func main() {
 			setupLog.Error(err, "unable to create webhook", "webhook", "MyComputeClass")
 			os.Exit(1)
 		}
+	}
+
+	// setup pod watcher
+	if err := mgr.Add(&runnable.PodWatcher{
+		Client: mgr.GetClient(),
+	}); err != nil {
+		setupLog.Error(err, "unable to register PodWatcher")
+		os.Exit(1)
 	}
 
 	// +kubebuilder:scaffold:builder
