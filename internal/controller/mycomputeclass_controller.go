@@ -153,7 +153,6 @@ func createNodePool(priorityList []scalingv1.InstanceProperty, projectID, locati
 		}
 
 		logger.Info("NodePool created successfully", "nodePoolName", nodePoolName)
-		return nil
 	}
 
 	logger.Info("No suitable configuration found in priority list for NodePool creation")
