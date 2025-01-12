@@ -56,8 +56,6 @@ type MyComputeClassReconciler struct {
 func (r *MyComputeClassReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
-	// Initialize GKE client
-	// https://cloud.google.com/go/docs/reference/cloud.google.com/go/container/latest/apiv1#cloud_google_com_go_container_apiv1_ClusterManagerClient_NewClusterManagerClient
 	gkeClient, err := container.NewClusterManagerClient(ctx)
 	if err != nil {
 		logger.Error(err, "Failed to create GKE client")
