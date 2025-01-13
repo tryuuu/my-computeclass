@@ -118,6 +118,7 @@ func createNodePool(priorityList []scalingv1.InstanceProperty, projectID, locati
 		if property.Spot != nil && *property.Spot {
 			nodePoolName = fmt.Sprintf("%s-spot", nodePoolName)
 		}
+		logger.Info("Creating NodePool...", "nodePoolName", nodePoolName)
 		// NodePool configuration
 		newNodePool := &containerpb.NodePool{
 			Name: nodePoolName,
@@ -131,12 +132,21 @@ func createNodePool(priorityList []scalingv1.InstanceProperty, projectID, locati
 
 				}(),
 			},
-			Autoscaling: &containerpb.NodePoolAutoscaling{
-				Enabled:      false,
-				MinNodeCount: 1,
-				MaxNodeCount: 5,
-			},
+			// Autoscaling: &containerpb.NodePoolAutoscaling{
+			// 	Enabled:      true,
+			// 	MinNodeCount: 1,
+			// 	MaxNodeCount: 5,
+			// },
 			InitialNodeCount: 1,
+		}
+
+		// check if the NodePool already exists
+		_, err = gkeClient.GetNodePool(ctx, &containerpb.GetNodePoolRequest{
+			Name: fmt.Sprintf("projects/%s/locations/%s/clusters/%s/nodePools/%s", projectID, location, clusterName, nodePoolName),
+		})
+		if err == nil {
+			logger.Info("NodePool already exists", "nodePoolName", nodePoolName)
+			continue
 		}
 
 		// Create the NodePool
@@ -155,8 +165,7 @@ func createNodePool(priorityList []scalingv1.InstanceProperty, projectID, locati
 		logger.Info("NodePool created successfully", "nodePoolName", nodePoolName)
 	}
 
-	logger.Info("No suitable configuration found in priority list for NodePool creation")
-	return fmt.Errorf("failed to create NodePool: no valid configurations found")
+	return nil
 }
 
 func (r *MyComputeClassReconciler) HandlePriorityList(ctx context.Context, req ctrl.Request) ([]scalingv1.InstanceProperty, error) {
