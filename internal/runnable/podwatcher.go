@@ -6,6 +6,8 @@ import (
 	"sort"
 	"time"
 
+	"k8s.io/apimachinery/pkg/types"
+
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -93,18 +95,37 @@ func (p *PodWatcher) Start(ctx context.Context) error {
 				continue
 			}
 
-			currentTime := time.Now()
+			// Filter Pods that are not Running
+			nonRunningPods := []corev1.Pod{}
 			for _, pod := range podList.Items {
-				// check if the pod has not been running for over 2 minutes
-				if pod.Status.Phase != corev1.PodRunning && pod.CreationTimestamp.Add(2*time.Minute).Before(currentTime) {
-					logger.Info("Pod has not been running for over 2 minutes", "PodName", pod.Name, "Namespace", pod.Namespace)
+				if pod.Status.Phase != corev1.PodRunning {
+					nonRunningPods = append(nonRunningPods, pod)
+					logger.Info("Found non-running Pod", "PodName", pod.Name, "Namespace", pod.Namespace)
+				}
+			}
 
-					p.addTolerationWithSecondPriority(ctx, &pod, secondPriorityMachineFamily)
-					if err := p.Client.Update(ctx, &pod); err != nil {
-						logger.Error(err, "Failed to update Pod", "PodName", pod.Name)
+			// wait 2 minutes and check the status
+			time.Sleep(2 * time.Minute)
+			for _, pod := range nonRunningPods {
+				var updatedPod corev1.Pod
+				if err := p.Client.Get(ctx, types.NamespacedName{Name: pod.Name, Namespace: pod.Namespace}, &updatedPod); err != nil {
+					logger.Error(err, "Failed to get updated Pod", "PodName", pod.Name, "Namespace", pod.Namespace)
+					continue
+				}
+
+				// Check if the Pod is still not Running
+				if updatedPod.Status.Phase != corev1.PodRunning {
+					logger.Info("Pod is still not Running", "PodName", updatedPod.Name, "Namespace", updatedPod.Namespace)
+
+					// Add toleration with second priority
+					p.addTolerationWithSecondPriority(ctx, &updatedPod, secondPriorityMachineFamily)
+					if err := p.Client.Update(ctx, &updatedPod); err != nil {
+						logger.Error(err, "Failed to update Pod", "PodName", updatedPod.Name)
 					} else {
-						logger.Info("Toleration added successfully", "PodName", pod.Name, "Namespace", pod.Namespace)
+						logger.Info("Toleration added successfully", "PodName", updatedPod.Name, "Namespace", updatedPod.Namespace)
 					}
+				} else {
+					logger.Info("Pod transitioned to Running state", "PodName", updatedPod.Name, "Namespace", updatedPod.Namespace)
 				}
 			}
 		case <-ctx.Done():
