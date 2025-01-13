@@ -5,7 +5,7 @@ metadata:
   labels:
     app: nginx
 spec:
-  replicas: 10
+  replicas: 1
   selector:
     matchLabels:
       app: nginx
@@ -13,9 +13,8 @@ spec:
     metadata:
       labels:
         app: nginx
-    spec:
-      nodeSelector:
         tryu.com/my-computeclass: "dev-class"
+    spec:
       containers:
       - name: nginx
         image: nginx:latest
