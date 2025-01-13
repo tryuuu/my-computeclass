@@ -132,7 +132,7 @@ func createNodePool(priorityList []scalingv1.InstanceProperty, projectID, locati
 				}(),
 			},
 			Autoscaling: &containerpb.NodePoolAutoscaling{
-				Enabled:      true,
+				Enabled:      false,
 				MinNodeCount: 1,
 				MaxNodeCount: 5,
 			},
