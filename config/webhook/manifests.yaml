@@ -25,10 +25,6 @@ webhooks:
       - key: kubernetes.io/metadata.name
         operator: NotIn
         values: ["my-computeclass-system"]
-  objectSelector: 
-    matchExpressions:
-      - key: tryu.com/my-computeclass
-        operator: Exists
   sideEffects: None
 - name: mutating-node-webhook.kb.io
   clientConfig:

@@ -89,6 +89,11 @@ func (d *MyComputeClassCustomDefaulter) AddPodSettings(ctx context.Context, pod 
 	if err != nil {
 		return err
 	}
+	// if there is no label "tryu.com/my-computeclass", add all tolerations and skip the rest
+	if _, exists := pod.Labels["tryu.com/my-computeclass"]; !exists {
+		d.addAllTolerations(pod)
+		return nil
+	}
 
 	// add tolerations
 	d.addTolerations(pod, topPriorityMachineFamily)
@@ -313,4 +318,22 @@ func (d *MyComputeClassCustomDefaulter) addNodeAffinity(pod *corev1.Pod, priorit
 	)
 
 	mycomputeclasslog.Info("NodeAffinity added", "podName", pod.GetName(), "machineFamilies", machineFamilies)
+}
+
+func (d *MyComputeClassCustomDefaulter) addAllTolerations(pod *corev1.Pod) {
+	// Check if the toleration already exists
+	for _, toleration := range pod.Spec.Tolerations {
+		if toleration.Key == "my-compute-class" && toleration.Operator == corev1.TolerationOpExists {
+			mycomputeclasslog.Info("Toleration already exists", "podName", pod.GetName())
+			return
+		}
+	}
+	// Add tolerations for all values in key "my-compute-class"
+	pod.Spec.Tolerations = append(pod.Spec.Tolerations, corev1.Toleration{
+		Key:      "my-compute-class",
+		Operator: corev1.TolerationOpExists,
+		Effect:   corev1.TaintEffectNoSchedule,
+	})
+
+	mycomputeclasslog.Info("Added all tolerations to Pod", "podName", pod.GetName())
 }
