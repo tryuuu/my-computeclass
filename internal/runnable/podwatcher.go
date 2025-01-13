@@ -72,7 +72,7 @@ func (p *PodWatcher) addTolerationWithSecondPriority(ctx context.Context, pod *c
 // https://pkg.go.dev/sigs.k8s.io/controller-runtime/pkg/manager#Runnable
 func (p *PodWatcher) Start(ctx context.Context) error {
 	logger := log.FromContext(ctx)
-	ticker := time.NewTicker(3 * time.Minute) // chech every 3 minutes
+	ticker := time.NewTicker(2 * time.Minute) // chech every 2 minutes
 	defer ticker.Stop()
 
 	for {
@@ -104,8 +104,8 @@ func (p *PodWatcher) Start(ctx context.Context) error {
 				}
 			}
 
-			// wait 2 minutes and check the status
-			time.Sleep(2 * time.Minute)
+			// wait 1 minutes and check the status
+			time.Sleep(1 * time.Minute)
 			for _, pod := range nonRunningPods {
 				var updatedPod corev1.Pod
 				if err := p.Client.Get(ctx, types.NamespacedName{Name: pod.Name, Namespace: pod.Namespace}, &updatedPod); err != nil {
