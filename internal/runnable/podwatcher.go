@@ -64,7 +64,7 @@ func (p *PodWatcher) addTolerationWithSecondPriority(ctx context.Context, pod *c
 	}
 }
 
-// +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
+// +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;update;patch
 
 // Start implements the Runnable interface
 // https://pkg.go.dev/sigs.k8s.io/controller-runtime/pkg/manager#Runnable
