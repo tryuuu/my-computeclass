@@ -3,12 +3,20 @@ package controller
 import (
 	"context"
 	"sort"
+	"testing"
 
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+
+	// fake client
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/stretchr/testify/require"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -93,3 +101,58 @@ var _ = Describe("MyComputeClass Priority Sorting Test", func() {
 		Expect(sortedProps[2].MachineFamily).To(Equal("n2"))
 	})
 })
+
+func TestApplyTaintToNodePool(t *testing.T) {
+	ctx := context.Background()
+
+	// ★ 1. テスト用 Scheme を作成し、必要な型を登録
+	scheme := runtime.NewScheme()
+	_ = corev1.AddToScheme(scheme)
+	// 他に必要な API があれば続けて AddToScheme(...)
+
+	// 2. テスト用の Node オブジェクトを作成
+	testNode := &corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "test-node",
+			Labels: map[string]string{
+				"beta.kubernetes.io/instance-type": "e2-medium",
+			},
+		},
+	}
+
+	// 3. FakeClient を用意し、Node を事前登録
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(scheme). // ★ ここで同じ scheme を渡す
+		WithObjects(testNode).
+		Build()
+
+	// 4. テスト対象となる Reconciler を作成 (FakeClient を差し込む)
+	r := &MyComputeClassReconciler{
+		Client: fakeClient,
+		Scheme: scheme, // ★ Reconciler にも同じ scheme を渡す
+	}
+
+	// --- ここから下はそのまま ---
+	nodeKey := client.ObjectKey{Name: "test-node"}
+	nodeBefore := &corev1.Node{}
+	require.NoError(t, fakeClient.Get(ctx, nodeKey, nodeBefore))
+	require.Empty(t, nodeBefore.Spec.Taints)
+
+	require.NoError(t, r.applyTaintToNodePool(ctx, "e2-medium"))
+
+	nodeAfter := &corev1.Node{}
+	require.NoError(t, fakeClient.Get(ctx, nodeKey, nodeAfter))
+	require.Len(t, nodeAfter.Spec.Taints, 1)
+
+	taint := nodeAfter.Spec.Taints[0]
+	require.Equal(t, "my-compute-class", taint.Key)
+	require.Equal(t, "e2", taint.Value)
+	require.Equal(t, corev1.TaintEffectNoSchedule, taint.Effect)
+
+	// 重複しないことをテスト
+	require.NoError(t, r.applyTaintToNodePool(ctx, "e2-medium"))
+
+	nodeAfterSecond := &corev1.Node{}
+	require.NoError(t, fakeClient.Get(ctx, nodeKey, nodeAfterSecond))
+	require.Len(t, nodeAfterSecond.Spec.Taints, 1)
+}
