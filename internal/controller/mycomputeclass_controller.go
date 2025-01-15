@@ -165,7 +165,7 @@ func createNodePool(priorityList []scalingv1.InstanceProperty, projectID, locati
 		logger.Info("NodePool created successfully", "nodePoolName", nodePoolName)
 	}
 
-	return nil
+	return err
 }
 
 func (r *MyComputeClassReconciler) HandlePriorityList(ctx context.Context, req ctrl.Request) ([]scalingv1.InstanceProperty, error) {
