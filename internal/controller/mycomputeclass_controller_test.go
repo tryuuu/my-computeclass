@@ -105,12 +105,10 @@ var _ = Describe("MyComputeClass Priority Sorting Test", func() {
 func TestApplyTaintToNodePool(t *testing.T) {
 	ctx := context.Background()
 
-	// ★ 1. テスト用 Scheme を作成し、必要な型を登録
 	scheme := runtime.NewScheme()
 	_ = corev1.AddToScheme(scheme)
-	// 他に必要な API があれば続けて AddToScheme(...)
 
-	// 2. テスト用の Node オブジェクトを作成
+	// node object for testing
 	testNode := &corev1.Node{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "test-node",
@@ -120,19 +118,18 @@ func TestApplyTaintToNodePool(t *testing.T) {
 		},
 	}
 
-	// 3. FakeClient を用意し、Node を事前登録
+	// initialize fake client with the node object
 	fakeClient := fake.NewClientBuilder().
-		WithScheme(scheme). // ★ ここで同じ scheme を渡す
+		WithScheme(scheme).
 		WithObjects(testNode).
 		Build()
 
-	// 4. テスト対象となる Reconciler を作成 (FakeClient を差し込む)
+	// initialize reconciler
 	r := &MyComputeClassReconciler{
 		Client: fakeClient,
-		Scheme: scheme, // ★ Reconciler にも同じ scheme を渡す
+		Scheme: scheme,
 	}
 
-	// --- ここから下はそのまま ---
 	nodeKey := client.ObjectKey{Name: "test-node"}
 	nodeBefore := &corev1.Node{}
 	require.NoError(t, fakeClient.Get(ctx, nodeKey, nodeBefore))
@@ -144,12 +141,13 @@ func TestApplyTaintToNodePool(t *testing.T) {
 	require.NoError(t, fakeClient.Get(ctx, nodeKey, nodeAfter))
 	require.Len(t, nodeAfter.Spec.Taints, 1)
 
+	// check if the taint is applied correctly
 	taint := nodeAfter.Spec.Taints[0]
 	require.Equal(t, "my-compute-class", taint.Key)
 	require.Equal(t, "e2", taint.Value)
 	require.Equal(t, corev1.TaintEffectNoSchedule, taint.Effect)
 
-	// 重複しないことをテスト
+	// check if the taint is not applied again
 	require.NoError(t, r.applyTaintToNodePool(ctx, "e2-medium"))
 
 	nodeAfterSecond := &corev1.Node{}
