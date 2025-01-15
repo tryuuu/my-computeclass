@@ -16,12 +16,10 @@ import (
 	scalingv1 "tryu.com/my-computeclass/api/v1"
 )
 
-// PrioritySortingTest では、MyComputeClassReconciler の HandlePriorityList が
-// MyComputeClass.Spec.Properties を正しく Priority 順にソートするかを検証します。
-var _ = Describe("MyComputeClass Priority Sorting", func() {
+var _ = Describe("MyComputeClass Priority Sorting Test", func() {
 	const (
 		testNamespace = "default"
-		resourceName  = "test-mycomputeclass-priority"
+		resourceName  = "test-mycomputeclass"
 	)
 
 	ctx := context.Background()
@@ -31,18 +29,16 @@ var _ = Describe("MyComputeClass Priority Sorting", func() {
 	}
 
 	BeforeEach(func() {
-		// EnvTest 上に同名のリソースが残っていれば削除しておく
+		// cleanup mycomputeclass resource
 		mc := &scalingv1.MyComputeClass{}
 		err := k8sClient.Get(ctx, typeNamespacedName, mc)
 		if err == nil {
 			_ = k8sClient.Delete(ctx, mc)
 		} else if !k8serrors.IsNotFound(err) {
-			// それ以外のエラーであればテストを中断
 			Expect(err).NotTo(HaveOccurred())
 		}
 
-		// 新規 MyComputeClass リソースを作成
-		// Priority がバラバラの順序で並んでいる
+		// create mycomputeclass resource with priorities unsorted
 		testMC := &scalingv1.MyComputeClass{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      resourceName,
@@ -52,7 +48,7 @@ var _ = Describe("MyComputeClass Priority Sorting", func() {
 				Properties: []scalingv1.InstanceProperty{
 					{MachineFamily: "n2", Priority: 3},
 					{MachineFamily: "e2", Priority: 2},
-					{MachineFamily: "n1", Priority: 1},
+					{MachineFamily: "n2d", Priority: 1},
 				},
 			},
 		}
@@ -61,7 +57,7 @@ var _ = Describe("MyComputeClass Priority Sorting", func() {
 	})
 
 	AfterEach(func() {
-		// 後片付けとして、テスト用 MyComputeClass を削除
+		// delete mycomputeclass resource after each test
 		mc := &scalingv1.MyComputeClass{}
 		err := k8sClient.Get(ctx, typeNamespacedName, mc)
 		if err == nil {
@@ -70,31 +66,29 @@ var _ = Describe("MyComputeClass Priority Sorting", func() {
 	})
 
 	It("should return a Priority-sorted list via HandlePriorityList", func() {
-		// Reconciler 作成 (GKEClient や他のフィールドは今回は使わない想定)
+		// initialize MyComputeClassReconciler
 		r := &MyComputeClassReconciler{
 			Client: k8sClient,
 			Scheme: k8sClient.Scheme(),
 		}
 
-		// Reconcile Request を準備
 		req := reconcile.Request{
 			NamespacedName: typeNamespacedName,
 		}
 
-		// HandlePriorityList を直接呼んで Priority ソートされるかを確認
+		// call HandlePriorityList
 		sortedProps, err := r.HandlePriorityList(ctx, req)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(sortedProps).To(HaveLen(3))
 
-		// 返されたスライスが Priority の昇順であることを検証
-		// (sortedProps[0].Priority <= sortedProps[1].Priority <= sortedProps[2].Priority)
+		// check if the properties are sorted by Priority
 		isSorted := sort.SliceIsSorted(sortedProps, func(i, j int) bool {
 			return sortedProps[i].Priority < sortedProps[j].Priority
 		})
 		Expect(isSorted).To(BeTrue(), "Properties should be sorted by ascending Priority")
 
-		// 具体的に Priority 値が 1,2,3 の順かも確認
-		Expect(sortedProps[0].MachineFamily).To(Equal("n1"))
+		// check if the properties are sorted by Priority
+		Expect(sortedProps[0].MachineFamily).To(Equal("n2d"))
 		Expect(sortedProps[1].MachineFamily).To(Equal("e2"))
 		Expect(sortedProps[2].MachineFamily).To(Equal("n2"))
 	})
