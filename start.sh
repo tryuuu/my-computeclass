@@ -1,5 +1,4 @@
 #! /bin/bash
-gcloud container clusters get-credentials sreake-intern-tryu-gke --region asia-northeast1
 kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.16.2/cert-manager.yaml
 
 sleep 5
