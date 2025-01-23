@@ -69,10 +69,6 @@ func (r *MyComputeClassReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{}, err
 	}
 
-	projectID := "ryu-project-441804"
-	location := "asia-northeast1"
-	clusterName := "sreake-intern-tryu-gke"
-
 	// Provision new NodePool
 	err = createNodePool(priorityList, projectID, location, clusterName, gkeClient, ctx)
 	if err != nil {
