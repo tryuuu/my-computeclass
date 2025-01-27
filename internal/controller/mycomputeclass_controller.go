@@ -55,6 +55,9 @@ type MyComputeClassReconciler struct {
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.19.1/pkg/reconcile
 func (r *MyComputeClassReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
+	var projectID = "test"
+	var location = "asia-southeast1"
+	var clusterName = "test-cluster"
 
 	gkeClient, err := container.NewClusterManagerClient(ctx)
 	if err != nil {
