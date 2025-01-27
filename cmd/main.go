@@ -207,6 +207,7 @@ func main() {
 	// Start method will be called because PodWatcher implements the Runnable interface
 	if err := mgr.Add(&runnable.PodWatcher{
 		Client: mgr.GetClient(),
+		Cache:  mgr.GetCache(),
 	}); err != nil {
 		setupLog.Error(err, "unable to register PodWatcher")
 		os.Exit(1)
