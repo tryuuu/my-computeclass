@@ -4,18 +4,19 @@ import (
 	"context"
 	"fmt"
 	"sort"
-	"time"
-
-	"k8s.io/apimachinery/pkg/types"
 
 	corev1 "k8s.io/api/core/v1"
+	toolscache "k8s.io/client-go/tools/cache"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	scalingv1 "tryu.com/my-computeclass/api/v1"
 )
 
 type PodWatcher struct {
-	Client client.Client
+	Client    client.Client
+	Cache     cache.Cache
+	Namespace string
 }
 
 func (p *PodWatcher) InitializeSettings(ctx context.Context) ([]scalingv1.InstanceProperty, string, error) {
@@ -66,71 +67,70 @@ func (p *PodWatcher) addTolerationWithSecondPriority(ctx context.Context, pod *c
 	}
 }
 
-// +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;update;patch
-
-// Start implements the Runnable interface
-// https://pkg.go.dev/sigs.k8s.io/controller-runtime/pkg/manager#Runnable
 func (p *PodWatcher) Start(ctx context.Context) error {
 	logger := log.FromContext(ctx)
-	ticker := time.NewTicker(2 * time.Minute) // chech every 2 minutes
-	defer ticker.Stop()
 
-	for {
-		select {
-		case <-ticker.C:
-			_, secondPriorityMachineFamily, err := p.InitializeSettings(ctx)
-			if err != nil {
-				logger.Error(err, "Failed to initialize settings")
-				continue
-			}
+	informer, err := p.Cache.GetInformer(ctx, &corev1.Pod{})
+	if err != nil {
+		logger.Error(err, "Failed to get Pod Informer")
+		return err
+	}
 
-			if secondPriorityMachineFamily == "" {
-				logger.Info("No second priority machine family found, skipping")
-				continue
-			}
+	_, err = informer.AddEventHandler(toolscache.ResourceEventHandlerFuncs{
+		AddFunc: func(obj interface{}) {
+			p.handlePod(ctx, obj)
+		},
+		UpdateFunc: func(oldObj, newObj interface{}) {
+			p.handlePod(ctx, newObj)
+		},
+	})
+	if err != nil {
+		logger.Error(err, "Failed to add event handler")
+		return err
+	}
 
-			var podList corev1.PodList
-			if err := p.Client.List(ctx, &podList); err != nil {
-				logger.Error(err, "Failed to list Pods")
-				continue
-			}
-
-			// Filter Pods that are not Running
-			nonRunningPods := []corev1.Pod{}
-			for _, pod := range podList.Items {
-				if pod.Status.Phase != corev1.PodRunning {
-					nonRunningPods = append(nonRunningPods, pod)
-					logger.Info("Found non-running Pod", "PodName", pod.Name, "Namespace", pod.Namespace)
-				}
-			}
-
-			// wait 1 minutes and check the status
-			time.Sleep(1 * time.Minute)
-			for _, pod := range nonRunningPods {
-				var updatedPod corev1.Pod
-				if err := p.Client.Get(ctx, types.NamespacedName{Name: pod.Name, Namespace: pod.Namespace}, &updatedPod); err != nil {
-					logger.Error(err, "Failed to get updated Pod", "PodName", pod.Name, "Namespace", pod.Namespace)
-					continue
-				}
-
-				// Check if the Pod is still not Running
-				if updatedPod.Status.Phase != corev1.PodRunning {
-					logger.Info("Pod is still not Running", "PodName", updatedPod.Name, "Namespace", updatedPod.Namespace)
-
-					// Add toleration with second priority
-					p.addTolerationWithSecondPriority(ctx, &updatedPod, secondPriorityMachineFamily)
-					if err := p.Client.Update(ctx, &updatedPod); err != nil {
-						logger.Error(err, "Failed to update Pod", "PodName", updatedPod.Name)
-					} else {
-						logger.Info("Toleration added successfully", "PodName", updatedPod.Name, "Namespace", updatedPod.Namespace)
-					}
-				} else {
-					logger.Info("Pod transitioned to Running state", "PodName", updatedPod.Name, "Namespace", updatedPod.Namespace)
-				}
-			}
-		case <-ctx.Done():
-			logger.Info("Stopping PodWatcher")
-			return nil
+	go func() {
+		if err := p.Cache.Start(ctx); err != nil {
+			logger.Error(err, "Failed to start cache")
 		}
+	}()
+
+	if !p.Cache.WaitForCacheSync(ctx) {
+		logger.Error(nil, "Cache failed to sync")
+		return fmt.Errorf("cache sync failed")
+	}
+
+	logger.Info("PodWatcher started")
+	<-ctx.Done()
+	logger.Info("Stopping PodWatcher")
+	return nil
+}
+
+func (p *PodWatcher) handlePod(ctx context.Context, obj interface{}) {
+	pod, ok := obj.(*corev1.Pod)
+	if !ok {
+		return
+	}
+
+	if pod.Status.Phase == corev1.PodPending {
+		log.FromContext(ctx).Info("Pending Pod detected", "PodName", pod.GetName())
+		p.processPendingPod(ctx, pod)
+	}
+}
+
+func (p *PodWatcher) processPendingPod(ctx context.Context, pod *corev1.Pod) {
+	logger := log.FromContext(ctx)
+
+	_, secondPriorityMachineFamily, err := p.InitializeSettings(ctx)
+	if err != nil {
+		logger.Error(err, "Failed to initialize settings")
+		return
+	}
+
+	p.addTolerationWithSecondPriority(ctx, pod, secondPriorityMachineFamily)
+	if err := p.Client.Update(ctx, pod); err != nil {
+		logger.Error(err, "Failed to update Pod", "PodName", pod.Name)
+	} else {
+		logger.Info("Toleration added successfully", "PodName", pod.Name, "Namespace", pod.Namespace)
 	}
 }

@@ -33,6 +33,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
@@ -54,6 +55,30 @@ func init() {
 
 	utilruntime.Must(scalingv1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
+}
+
+type Controller interface {
+	SetupWithManager(mgr ctrl.Manager) error
+}
+
+func SetupControllers(mgr manager.Manager) error {
+	controllers := []Controller{
+		&controller.MyComputeClassReconciler{
+			Client: mgr.GetClient(),
+			Scheme: mgr.GetScheme(),
+		},
+		// &controller.PodReconciler{
+		// 	Client: mgr.GetClient(),
+		// },
+	}
+
+	for _, c := range controllers {
+		if err := c.SetupWithManager(mgr); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func main() {
@@ -146,11 +171,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&controller.MyComputeClassReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "MyComputeClass")
+	if err := SetupControllers(mgr); err != nil {
+		ctrl.Log.WithName("setup").Error(err, "unable to set up controllers")
 		os.Exit(1)
 	}
 	// nolint:goconst
@@ -182,6 +204,7 @@ func main() {
 	}
 
 	// setup pod watcher
+	// Start method will be called because PodWatcher implements the Runnable interface
 	if err := mgr.Add(&runnable.PodWatcher{
 		Client: mgr.GetClient(),
 	}); err != nil {
