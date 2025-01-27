@@ -64,7 +64,7 @@ func (p *PodWatcher) addTolerationWithSecondPriority(ctx context.Context, pod *c
 			Value:    machineFamily,
 			Effect:   corev1.TaintEffectNoSchedule,
 		})
-		log.FromContext(ctx).Info("Toleration added", "podName", pod.GetName(), "machineFamily", machineFamily)
+		log.FromContext(ctx).Info("Second Toleration added", "podName", pod.GetName(), "machineFamily", machineFamily)
 	}
 }
 
@@ -122,15 +122,15 @@ func (p *PodWatcher) handlePod(ctx context.Context, obj interface{}) {
 	if pod.Status.Phase == corev1.PodPending {
 		log.FromContext(ctx).Info("Pending Pod detected (first check)", "PodName", pod.GetName())
 
-		// wait 15 sec
+		// wait 30 sec
 		select {
-		case <-time.After(15 * time.Second):
+		case <-time.After(30 * time.Second):
 		case <-ctx.Done():
 			log.FromContext(ctx).Info("Context canceled before second check", "PodName", pod.GetName())
 			return
 		}
 
-		// check status after 15 sec
+		// check status after 30 sec
 		var latestPod corev1.Pod
 		if err := p.Client.Get(ctx, client.ObjectKey{
 			Namespace: pod.Namespace,
@@ -140,12 +140,12 @@ func (p *PodWatcher) handlePod(ctx context.Context, obj interface{}) {
 			return
 		}
 
-		// only add toleration if the pod is still pending after 15 sec
+		// only add toleration if the pod is still pending after 30 sec
 		if latestPod.Status.Phase == corev1.PodPending {
-			log.FromContext(ctx).Info("Pending Pod detected (second check, after 10 seconds)", "PodName", pod.GetName())
+			log.FromContext(ctx).Info("Pending Pod detected (second check, after 30 seconds)", "PodName", pod.GetName())
 			p.processPendingPod(ctx, &latestPod)
 		} else {
-			log.FromContext(ctx).Info("Pod is no longer Pending after 10 seconds", "PodName", pod.GetName())
+			log.FromContext(ctx).Info("Pod is no longer Pending after 30 seconds", "PodName", pod.GetName())
 		}
 	}
 }
