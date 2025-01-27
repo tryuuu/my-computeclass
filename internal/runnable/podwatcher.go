@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	toolscache "k8s.io/client-go/tools/cache"
@@ -117,9 +118,35 @@ func (p *PodWatcher) handlePod(ctx context.Context, obj interface{}) {
 		return
 	}
 
+	// check pod status
 	if pod.Status.Phase == corev1.PodPending {
-		log.FromContext(ctx).Info("Pending Pod detected", "PodName", pod.GetName())
-		p.processPendingPod(ctx, pod)
+		log.FromContext(ctx).Info("Pending Pod detected (first check)", "PodName", pod.GetName())
+
+		// wait 15 sec
+		select {
+		case <-time.After(15 * time.Second):
+		case <-ctx.Done():
+			log.FromContext(ctx).Info("Context canceled before second check", "PodName", pod.GetName())
+			return
+		}
+
+		// check status after 15 sec
+		var latestPod corev1.Pod
+		if err := p.Client.Get(ctx, client.ObjectKey{
+			Namespace: pod.Namespace,
+			Name:      pod.Name,
+		}, &latestPod); err != nil {
+			log.FromContext(ctx).Error(err, "Failed to fetch the latest version of Pod", "PodName", pod.GetName())
+			return
+		}
+
+		// only add toleration if the pod is still pending after 15 sec
+		if latestPod.Status.Phase == corev1.PodPending {
+			log.FromContext(ctx).Info("Pending Pod detected (second check, after 10 seconds)", "PodName", pod.GetName())
+			p.processPendingPod(ctx, &latestPod)
+		} else {
+			log.FromContext(ctx).Info("Pod is no longer Pending after 10 seconds", "PodName", pod.GetName())
+		}
 	}
 }
 
