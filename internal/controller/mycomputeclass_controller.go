@@ -43,6 +43,7 @@ type MyComputeClassReconciler struct {
 // +kubebuilder:rbac:groups=scaling.tryu.com,resources=mycomputeclasses/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=scaling.tryu.com,resources=mycomputeclasses/finalizers,verbs=update
 // +kubebuilder:rbac:groups=core,resources=nodes,verbs=get;list;watch;update
+// +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;update;patch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -55,9 +56,9 @@ type MyComputeClassReconciler struct {
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.19.1/pkg/reconcile
 func (r *MyComputeClassReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
-	var projectID = "test"
-	var location = "asia-southeast1"
-	var clusterName = "test-cluster"
+	projectID := ""
+	location := "asia-northeast1"
+	clusterName := ""
 
 	gkeClient, err := container.NewClusterManagerClient(ctx)
 	if err != nil {
