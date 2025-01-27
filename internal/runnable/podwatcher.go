@@ -67,9 +67,14 @@ func (p *PodWatcher) addTolerationWithSecondPriority(ctx context.Context, pod *c
 	}
 }
 
+// +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;update;patch
 func (p *PodWatcher) Start(ctx context.Context) error {
 	logger := log.FromContext(ctx)
 
+	if p.Cache == nil {
+		logger.Error(nil, "Cache is not set")
+		return fmt.Errorf("cache is not set")
+	}
 	informer, err := p.Cache.GetInformer(ctx, &corev1.Pod{})
 	if err != nil {
 		logger.Error(err, "Failed to get Pod Informer")
@@ -120,6 +125,16 @@ func (p *PodWatcher) handlePod(ctx context.Context, obj interface{}) {
 
 func (p *PodWatcher) processPendingPod(ctx context.Context, pod *corev1.Pod) {
 	logger := log.FromContext(ctx)
+
+	// get the latest version of the Pod
+	var latestPod corev1.Pod
+	if err := p.Client.Get(ctx, client.ObjectKey{
+		Namespace: pod.Namespace,
+		Name:      pod.Name,
+	}, &latestPod); err != nil {
+		logger.Error(err, "Failed to fetch the latest version of Pod", "PodName", pod.Name)
+		return
+	}
 
 	_, secondPriorityMachineFamily, err := p.InitializeSettings(ctx)
 	if err != nil {
